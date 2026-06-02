@@ -22,7 +22,19 @@ Before ANY of the following operations, you MUST stop and ask: **"Delegate to De
 > Delegate to DeepSeek? (y/n)
 ```
 
-**If y/yes:** Call `deepseek` tool with model `deepseek-v4-pro`. Announce `> Delegating to DeepSeek (deepseek-v4-pro)...` Pack full context into prompt. Synthesize result, don't echo verbatim.
+**If y/yes:** Call `deepseek` tool with model `deepseek-v4-pro`. Announce `> Delegating to DeepSeek (deepseek-v4-pro)...`
+
+**CRITICAL — do NOT read files before delegating.** Pass file paths via the `files` parameter instead of reading them with Read/cat and embedding content in `prompt`. The MCP server reads the files itself — this keeps file bytes out of Claude's context window entirely.
+
+```
+// RIGHT — file bytes never touch Claude's context
+deepseek(prompt: "Audit for bugs", files: ["/abs/path/a.py", "/abs/path/b.py"])
+
+// WRONG — reads files into Claude's context first, then forwards to DeepSeek
+<read files> → deepseek(prompt: "Audit for bugs\n\n```python\n[file contents]\n```")
+```
+
+Synthesize result, don't echo verbatim.
 
 **If n/no:** Proceed yourself.
 

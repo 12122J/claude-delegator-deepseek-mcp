@@ -72,11 +72,26 @@ Delegate a task to DeepSeek.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `prompt` | string | *required* | The full task/prompt |
+| `prompt` | string | *required* | The task/instructions for DeepSeek |
+| `files` | string[] | — | Absolute file paths to read and include. **The MCP server reads them — file contents never pass through Claude's context window.** Use this instead of embedding file content in `prompt`. |
 | `system` | string | — | Optional system prompt |
 | `model` | string | `deepseek-v4-pro` | Model ID |
 | `temperature` | number | `0.7` | 0-2, lower = deterministic |
 | `maxTokens` | number | model max | Response token cap |
+
+**Using `files[]` is the key to saving tokens.** When Claude reads files and pastes them into `prompt`, those bytes load into Claude's context window first. With `files[]`, Claude passes only paths — the MCP process reads the bytes directly and forwards them to DeepSeek. Large codebases go to DeepSeek without ever touching Claude's context.
+
+```jsonc
+// Claude calls the tool like this — no file reading needed first:
+deepseek({
+  prompt: "Audit these files for security vulnerabilities...",
+  files: [
+    "/path/to/auth.py",
+    "/path/to/middleware.py",
+    "/path/to/payments.py"
+  ]
+})
+```
 
 ### `deepseek_models`
 

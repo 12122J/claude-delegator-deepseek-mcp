@@ -1,4 +1,5 @@
 import { readFile, stat } from 'fs/promises';
+import { basename, extname } from 'path';
 import { callDeepSeek } from './client.mjs';
 import { MODELS, listModels, getDefaultModel } from './models.mjs';
 import { buildFooter } from './pricing.mjs';
@@ -81,9 +82,7 @@ export async function handleToolCall(name, args) {
                 return `### ${p}\n(skipped: would exceed context window — ${(size / 1024).toFixed(1)}KB)`;
               }
               totalBytes += size;
-              const base = p.split('/').pop() || '';
-              const dot = base.lastIndexOf('.');
-              const ext = dot > 0 ? base.slice(dot + 1) : '';
+              const ext = extname(basename(p)).replace(/^\./, '');
               return `### ${p}\n\`\`\`${ext}\n${await readFile(p, 'utf8')}\n\`\`\``;
             } catch (e) {
               return `### ${p}\n(error: ${e.message})`;
