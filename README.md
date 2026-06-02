@@ -5,12 +5,12 @@ MCP server that lets [Claude Code](https://claude.ai/code) delegate heavy-token 
 **One `deepseek` tool.** Zero dependencies. Saves ~90% on token costs vs Claude Sonnet 4.
 
 ```console
-─── deepseek-mcp
+─── claude-code-deepseek-delegator
 ◆ delegated to DeepSeek (v4-pro)
 
 [... full response ...]
 
-─── deepseek-mcp · cost ───
+─── claude-code-deepseek-delegator · cost ───
 deepseek v4-pro $0.073  │  claude sonnet 4 $0.720
 saved $0.647 (90%)  │  144,000 tokens (120,000p + 24,000c)
 ────────────────────────────────
@@ -19,11 +19,16 @@ saved $0.647 (90%)  │  144,000 tokens (120,000p + 24,000c)
 ## Install
 
 ```bash
-git clone https://github.com/12122J/deepseek-mcp.git
-cd deepseek-mcp
+npm install -g claude-code-deepseek-delegator
 ```
 
-No `npm install` needed. Zero dependencies — Node.js 20+ built-ins only.
+Or run directly without installing:
+
+```bash
+npx claude-code-deepseek-delegator
+```
+
+Zero dependencies — Node.js 20+ built-ins only.
 
 Get a free DeepSeek API key at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). They give you credits on signup.
 
@@ -35,8 +40,8 @@ Add to `~/.claude/mcp.json`:
 {
   "mcpServers": {
     "deepseek": {
-      "command": "node",
-      "args": ["/Users/you/deepseek-mcp/src/index.mjs"],
+      "command": "npx",
+      "args": ["claude-code-deepseek-delegator"],
       "env": {
         "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}"
       }
