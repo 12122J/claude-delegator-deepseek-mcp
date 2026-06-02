@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { callDeepSeek } from './client.mjs';
 import { listModels, getDefaultModel } from './models.mjs';
 import { buildFooter } from './pricing.mjs';
@@ -36,6 +37,14 @@ export const TOOLS = [
           type: 'number',
           description: 'Max tokens in response. Default: model max',
         },
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Absolute file paths to read and include in the prompt. ' +
+            'The MCP server reads them directly — file contents never pass through Claude\'s context window. ' +
+            'Use this instead of reading files with Read/ctx_read and embedding them in prompt.',
+        },
       },
       required: ['prompt'],
     },
@@ -54,7 +63,25 @@ export async function handleToolCall(name, args) {
   switch (name) {
     case 'deepseek': {
       const model = args.model || getDefaultModel();
-      const result = await callDeepSeek(args);
+
+      // Read files server-side — bytes stay in the MCP process, never in Claude's context
+      let resolvedArgs = args;
+      if (args.files && args.files.length > 0) {
+        const sections = args.files.map((p) => {
+          try {
+            const ext = p.split('.').pop() || '';
+            return `### ${p}\n\`\`\`${ext}\n${readFileSync(p, 'utf8')}\n\`\`\``;
+          } catch (e) {
+            return `### ${p}\n(error: ${e.message})`;
+          }
+        });
+        resolvedArgs = {
+          ...args,
+          prompt: args.prompt + '\n\n## FILES:\n\n' + sections.join('\n\n'),
+        };
+      }
+
+      const result = await callDeepSeek(resolvedArgs);
       const header = [
         '',
         dim('─── claude-code-deepseek-delegator'),
