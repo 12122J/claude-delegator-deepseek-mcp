@@ -38,7 +38,7 @@ export function buildFooter(result, model) {
 
   const lines = [
     '',
-    dim('─── deepseek-mcp · cost ───'),
+    dim('─── claude-code-deepseek-delegator · cost ───'),
     `${color('green', 'deepseek')} ${dim(model.replace('deepseek-',''))} ${color('dim', formatCost(dsCost))}  │  ${color('yellow', 'claude sonnet 4')} ${dim(formatCost(claudeCost))}`,
     `${color('green', 'saved')} ${bold(formatCost(saved))} ${color('green', '(' + pct + '%)')}  │  ${dim(usage.totalTokens.toLocaleString() + ' tokens')} ${color('dim', '(' + usage.promptTokens.toLocaleString() + 'p + ' + usage.completionTokens.toLocaleString() + 'c)')}`,
     dim('────────────────────────────────'),

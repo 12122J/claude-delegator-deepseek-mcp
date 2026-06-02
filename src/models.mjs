@@ -4,15 +4,15 @@
 export const MODELS = {
   'deepseek-v4-pro': {
     name: 'DeepSeek V4 Pro',
-    contextWindow: 262144,
-    maxOutputTokens: 32768,
+    contextWindow: 1_000_000,
+    maxOutputTokens: 384_000,
     thinking: true,
     description: 'Smartest model with thinking capability. Best for complex analysis, code generation, architecture, and multi-step reasoning.',
   },
   'deepseek-v4-flash': {
     name: 'DeepSeek V4 Flash',
-    contextWindow: 262144,
-    maxOutputTokens: 32768,
+    contextWindow: 1_000_000,
+    maxOutputTokens: 384_000,
     thinking: false,
     description: 'Faster and cheaper model. Best for simpler tasks, quick answers, and when latency matters more than depth.',
   },

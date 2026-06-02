@@ -8,7 +8,7 @@ import { handleToolCall, TOOLS } from './tools.mjs';
 import { getDefaultModel } from './models.mjs';
 
 const PROTOCOL_VERSION = '2024-11-05';
-const SERVER_NAME = 'deepseek-mcp';
+const SERVER_NAME = 'claude-code-deepseek-delegator';
 const SERVER_VERSION = '2.0.0';
 
 let buffer = '';

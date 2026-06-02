@@ -1,8 +1,6 @@
-# DeepSeek Delegation Rules for Claude Code
+# Claude Code DeepSeek Delegator — Auto-Delegate Rules
 
-## How to use
-
-Copy these rules into `~/.claude/CLAUDE.md` under `## DeepSeek Delegation`.
+Copy these rules into `~/.claude/CLAUDE.md`. Once added, Claude will ask **"Delegate to DeepSeek? (y/n)"** before any heavy operation.
 
 ---
 

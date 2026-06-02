@@ -7,7 +7,8 @@ export const TOOLS = [
   {
     name: 'deepseek',
     description:
-      'Delegate heavy, token-intensive tasks to DeepSeek. Use when: analyzing large files (>300 lines), ' +
+      'Delegate heavy, token-intensive tasks from Claude Code to DeepSeek. ' +
+      'Use when: analyzing large files (>300 lines), ' +
       'multi-file codebase reviews, generating outputs >200 lines, complex reasoning, math, architecture design, ' +
       'or anytime your response would exceed ~4000 tokens. Claude orchestrates; DeepSeek does the heavy lifting.',
     inputSchema: {
@@ -56,7 +57,7 @@ export async function handleToolCall(name, args) {
       const result = await callDeepSeek(args);
       const header = [
         '',
-        dim('─── deepseek-mcp'),
+        dim('─── claude-code-deepseek-delegator'),
         `${color('green', '◆')} ${bold('delegated to')} ${color('cyan', 'DeepSeek')} ${dim('(' + model.replace('deepseek-', '') + ')')}`,
         '',
       ].join('\n');
@@ -69,7 +70,7 @@ export async function handleToolCall(name, args) {
     case 'deepseek_models': {
       const models = listModels();
       const text = [
-        dim('─── deepseek-mcp · available models ───'),
+        dim('─── claude-code-deepseek-delegator · models ───'),
         '',
         ...models.map(
           (m) =>

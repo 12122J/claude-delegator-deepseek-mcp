@@ -1,24 +1,33 @@
-# deepseek-mcp
+# Claude Code DeepSeek Delegator
 
-MCP server that lets Claude Code delegate heavy token tasks to DeepSeek.
+MCP server that lets [Claude Code](https://claude.ai/code) delegate heavy-token tasks to DeepSeek. Claude orchestrates; DeepSeek does the heavy lifting.
 
-**Philosophy**: Claude orchestrates; DeepSeek does the heavy lifting.
+**One `deepseek` tool.** Zero dependencies. Saves ~90% on token costs vs Claude Sonnet 4.
 
-## How it works
+```console
+─── deepseek-mcp
+◆ delegated to DeepSeek (v4-pro)
 
-Claude Code detects a task that would burn significant context (large file analysis, multi-file reviews, complex reasoning, long outputs). It calls the `deepseek` tool, which sends the prompt to DeepSeek's API. The response comes back with token usage stats appended.
+[... full response ...]
 
-## Quick start
-
-```bash
-# 1. Set your API key
-export DEEPSEEK_API_KEY="sk-your-key"
-
-# 2. Run the server
-node src/index.mjs
+─── deepseek-mcp · cost ───
+deepseek v4-pro $0.073  │  claude sonnet 4 $0.720
+saved $0.647 (90%)  │  144,000 tokens (120,000p + 24,000c)
+────────────────────────────────
 ```
 
-## Claude Code config
+## Install
+
+```bash
+git clone https://github.com/12122J/deepseek-mcp.git
+cd deepseek-mcp
+```
+
+No `npm install` needed. Zero dependencies — Node.js 20+ built-ins only.
+
+Get a free DeepSeek API key at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). They give you credits on signup.
+
+## Configure Claude Code
 
 Add to `~/.claude/mcp.json`:
 
@@ -27,13 +36,32 @@ Add to `~/.claude/mcp.json`:
   "mcpServers": {
     "deepseek": {
       "command": "node",
-      "args": ["/path/to/deepseek-mcp/src/index.mjs"],
+      "args": ["/Users/you/deepseek-mcp/src/index.mjs"],
       "env": {
         "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}"
       }
     }
   }
 }
+```
+
+Set your API key:
+
+```bash
+export DEEPSEEK_API_KEY="sk-your-key-here"
+```
+
+Restart Claude Code. The `deepseek` tool is now available.
+
+## Automatic delegation
+
+For Claude to automatically suggest delegation before heavy tasks, add the rules from [DELEGATION.md](DELEGATION.md) to your `~/.claude/CLAUDE.md`.
+
+Once added, Claude will ask **"Delegate to DeepSeek? (y/n)"** before any operation that exceeds ~300 lines, 3+ files, or 500+ words of output.
+
+```
+> This task analyzes ~800 lines across 4 files.
+> Delegate to DeepSeek? (y/n)
 ```
 
 ## Tools
@@ -52,37 +80,46 @@ Delegate a task to DeepSeek.
 
 ### `deepseek_models`
 
-List available models with capabilities.
+List available models with capabilities, context windows, and thinking support.
 
 ## Models
 
-| ID | Context | Thinking | Best for |
-|----|---------|----------|----------|
-| `deepseek-v4-pro` | 256K | Yes | Complex analysis, architecture, code |
-| `deepseek-v4-flash` | 256K | No | Fast/cheap tasks |
+| Model | Context | Thinking | Best for |
+|-------|---------|----------|----------|
+| `deepseek-v4-pro` | 1M | Yes | Complex analysis, architecture, code |
+| `deepseek-v4-flash` | 1M | Optional | Fast/cheap tasks |
 | `deepseek-reasoner` | 64K | Yes | Math, logic, step-by-step |
 
 ## Features
 
-- **Retry with backoff** — auto-retries on 429/5xx with exponential backoff
-- **Timeout** — configurable via `DEEPSEEK_TIMEOUT` (default 120s)
-- **Token tracking** — prompt/completion/total tokens appended to response
-- **Content-Length framing** — MCP spec-compliant JSON-RPC over stdio
-- **Zero dependencies** — Node.js 20+ built-ins only
+- **Cost comparison** — every response shows DeepSeek cost vs Claude Sonnet 4 equivalent, with \$ saved and percentage
+- **Mandatory delegation gate** — Claude can't skip the y/n prompt for heavy tasks
+- **Retry with backoff** — auto-retries on 429/5xx with exponential backoff (configurable attempts)
+- **Configurable timeout** — default 120s, set via `DEEPSEEK_TIMEOUT`
+- **Token tracking** — prompt, completion, and total tokens on every response
+- **ANSI colors** — output styled to match Claude Code CLI aesthetic (Tokyo Night palette)
+- **Content-Length framing** — MCP spec-compliant JSON-RPC 2.0 over stdio
 
 ## Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEEPSEEK_API_KEY` | — | **Required.** DeepSeek API key |
+| `DEEPSEEK_API_KEY` | — | **Required.** Your DeepSeek API key |
 | `DEEPSEEK_API_HOST` | `api.deepseek.com` | API hostname |
 | `DEEPSEEK_TIMEOUT` | `120000` | Request timeout in ms |
-| `DEEPSEEK_MAX_RETRIES` | `2` | Max retry attempts |
+| `DEEPSEEK_MAX_RETRIES` | `2` | Max retry attempts on failure |
 
-## Delegation Rules
+## Pricing
 
-For Claude Code to auto-suggest delegation, add the rules from
-[DELEGATION.md](./DELEGATION.md) to your `AGENTS.md` or `CLAUDE.md`.
+| Model | Input (1M tokens) | Output (1M tokens) |
+|-------|-------------------|---------------------|
+| `deepseek-v4-pro` | $0.435 | $0.87 |
+| `deepseek-v4-flash` | $0.14 | $0.28 |
+| `deepseek-reasoner` | $0.55 | $2.19 |
+| *Claude Sonnet 4 (comparison)* | $3.00 | $15.00 |
 
-Once added, Claude will ask "Delegate to DeepSeek? (y/n)" before any
-heavy operation (large file analysis, multi-file reviews, long outputs).
+You get free credits on signup at [platform.deepseek.com](https://platform.deepseek.com).
+
+## License
+
+MIT
