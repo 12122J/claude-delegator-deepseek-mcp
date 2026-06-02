@@ -78,3 +78,11 @@ List available models with capabilities.
 | `DEEPSEEK_API_HOST` | `api.deepseek.com` | API hostname |
 | `DEEPSEEK_TIMEOUT` | `120000` | Request timeout in ms |
 | `DEEPSEEK_MAX_RETRIES` | `2` | Max retry attempts |
+
+## Delegation Rules
+
+For Claude Code to auto-suggest delegation, add the rules from
+[DELEGATION.md](./DELEGATION.md) to your `AGENTS.md` or `CLAUDE.md`.
+
+Once added, Claude will ask "Delegate to DeepSeek? (y/n)" before any
+heavy operation (large file analysis, multi-file reviews, long outputs).
