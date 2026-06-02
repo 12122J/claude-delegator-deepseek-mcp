@@ -1,0 +1,20 @@
+{
+  "name": "deepseek-mcp",
+  "version": "2.0.0",
+  "description": "MCP server for delegating heavy token tasks to DeepSeek from Claude Code. Claude orchestrates; DeepSeek does the heavy lifting.",
+  "type": "module",
+  "main": "src/index.mjs",
+  "bin": {
+    "deepseek-mcp": "src/index.mjs"
+  },
+  "files": ["src/"],
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev": "node --watch src/index.mjs"
+  },
+  "keywords": ["mcp", "deepseek", "claude-code", "ai", "llm", "orchestration"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
