@@ -1,6 +1,7 @@
 import { callDeepSeek } from './client.mjs';
 import { listModels, getDefaultModel } from './models.mjs';
 import { buildFooter } from './pricing.mjs';
+import { color, bold, dim } from './colors.mjs';
 
 export const TOOLS = [
   {
@@ -40,7 +41,7 @@ export const TOOLS = [
   },
   {
     name: 'deepseek_models',
-    description: 'List available DeepSeek models with capabilities, context windows, and descriptions',
+    description: 'List available DeepSeek models with capabilities, context windows, and pricing',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -51,20 +52,33 @@ export const TOOLS = [
 export async function handleToolCall(name, args) {
   switch (name) {
     case 'deepseek': {
+      const model = args.model || getDefaultModel();
       const result = await callDeepSeek(args);
-      const footer = buildFooter(result, args.model || getDefaultModel());
+      const header = [
+        '',
+        dim('─── deepseek-mcp'),
+        `${color('green', '◆')} ${bold('delegated to')} ${color('cyan', 'DeepSeek')} ${dim('(' + model.replace('deepseek-', '') + ')')}`,
+        '',
+      ].join('\n');
+
+      const footer = buildFooter(result, model);
       return {
-        content: [{ type: 'text', text: result.content + '\n' + footer }],
+        content: [{ type: 'text', text: header + result.content + footer }],
       };
     }
     case 'deepseek_models': {
       const models = listModels();
-      const text = models
-        .map(
+      const text = [
+        dim('─── deepseek-mcp · available models ───'),
+        '',
+        ...models.map(
           (m) =>
-            `**${m.id}** — ${m.name}\n  Context: ${(m.contextWindow / 1024).toFixed(0)}K | Thinking: ${m.thinking ? 'on' : 'off'}\n  ${m.description}`
-        )
-        .join('\n\n');
+            `${color('green', '●')} ${bold(m.id)} ${dim('— ' + m.name)}\n` +
+            `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('thinking:')} ${m.thinking ? color('green', 'on') : color('yellow', 'off')}\n` +
+            `  ${dim(m.description)}\n`
+        ),
+        dim('─────────────────────────────────────'),
+      ].join('\n');
       return { content: [{ type: 'text', text }] };
     }
     default:

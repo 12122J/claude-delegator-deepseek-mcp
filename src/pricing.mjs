@@ -1,5 +1,7 @@
 // Pricing per 1M tokens (USD). Updated June 2026.
 
+import { color, bold, dim } from './colors.mjs';
+
 export const PRICING = {
   'deepseek-v4-pro': { input: 0.435, output: 0.87 },
   'deepseek-v4-flash': { input: 0.14, output: 0.28 },
@@ -14,7 +16,9 @@ export function calculateCost(inputTokens, outputTokens, pricing) {
 }
 
 export function formatCost(amount) {
-  return `$${amount.toFixed(4)}`;
+  if (amount < 0.01) return `$${amount.toFixed(4)}`;
+  if (amount < 1) return `$${amount.toFixed(3)}`;
+  return `$${amount.toFixed(2)}`;
 }
 
 export function formatSavings(deepseekCost, claudeCost) {
@@ -32,10 +36,13 @@ export function buildFooter(result, model) {
   const claudeCost = calculateCost(usage.promptTokens, usage.completionTokens, CLAUDE_PRICING);
   const { saved, pct } = formatSavings(dsCost, claudeCost);
 
-  return [
+  const lines = [
     '',
-    '─── cost ───',
-    `deepseek (${model}): ${formatCost(dsCost)}  |  claude sonnet 4: ${formatCost(claudeCost)}`,
-    `saved: ${formatCost(saved)} (${pct}%)  |  ${usage.totalTokens.toLocaleString()} tokens (${usage.promptTokens.toLocaleString()}p + ${usage.completionTokens.toLocaleString()}c)`,
-  ].join('\n');
+    dim('─── deepseek-mcp · cost ───'),
+    `${color('green', 'deepseek')} ${dim(model.replace('deepseek-',''))} ${color('dim', formatCost(dsCost))}  │  ${color('yellow', 'claude sonnet 4')} ${dim(formatCost(claudeCost))}`,
+    `${color('green', 'saved')} ${bold(formatCost(saved))} ${color('green', '(' + pct + '%)')}  │  ${dim(usage.totalTokens.toLocaleString() + ' tokens')} ${color('dim', '(' + usage.promptTokens.toLocaleString() + 'p + ' + usage.completionTokens.toLocaleString() + 'c)')}`,
+    dim('────────────────────────────────'),
+  ];
+
+  return lines.join('\n');
 }
