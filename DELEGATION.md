@@ -1,48 +1,33 @@
 # DeepSeek Delegation Rules for Claude Code
 
-Add these rules to your `AGENTS.md` or `CLAUDE.md` to enable automatic
-delegation prompts before heavy operations.
+## How to use
+
+Copy these rules into `~/.claude/CLAUDE.md` under `## DeepSeek Delegation`.
 
 ---
 
-## Delegation Rule
+## DeepSeek Delegation (MANDATORY GATE)
 
-Before ANY of these operations, ask: **"Delegate this to DeepSeek? (y/n)"**
+Before ANY of the following operations, you MUST stop and ask: **"Delegate to DeepSeek? (y/n)"**
 
-- **Bash/Shell** that processes or generates files > 300 lines
-- **Write/Edit** that creates or modifies > 200 lines of code
-- **WebFetch** that fetches pages with > 5,000 characters of content
-- **Analysis** of multi-file codebases or large single files
-- **Generation** of designs, plans, documentation, or architecture > 500 words
-- **Complex reasoning** involving math, logic, or multi-step deduction
+- Read/analyze/grep files > 300 lines total
+- Write/edit/create > 200 lines of code
+- Generate specs, docs, plans, or architecture > 500 words
+- Multi-file codebase review (3+ files)
+- Web fetch with > 5,000 chars response
+- Complex reasoning (math, logic, multi-step deduction)
+- Any task where your response would exceed ~4k tokens
 
-If the user answers **y** or **yes**: call the `deepseek` tool with the full
-task description as the prompt. Append the result to your response.
-
-If the user answers **n** or **no**: proceed with the task yourself.
-
-**Always print the estimated scope before asking.** Example:
-
+**Format:** Print the scope estimate, then ask. Example:
 ```
-> This task will analyze ~1,200 lines across 4 files.
+> This task analyzes ~800 lines across 4 files.
 > Delegate to DeepSeek? (y/n)
 ```
 
-## Threshold reference
+**If y/yes:** Call `deepseek` tool with model `deepseek-v4-pro`. Announce `> Delegating to DeepSeek (deepseek-v4-pro)...` Pack full context into prompt. Synthesize result, don't echo verbatim.
 
-| Operation | Delegation threshold |
-|-----------|---------------------|
-| Read/analyze files | > 300 lines total |
-| Write/edit code | > 200 lines changed |
-| Generate documentation | > 500 words |
-| Multi-file review | 3+ files |
-| Web content fetch | > 5,000 chars response |
+**If n/no:** Proceed yourself.
 
-## Anti-patterns
+**Never skip the prompt.** Not even for "obvious" cases. The gate is mandatory.
 
-Do NOT ask for delegation on:
-- Single-line edits or typo fixes
-- Reading files < 200 lines for context
-- Simple shell commands (ls, git status, npm install)
-- Questions the user asks you directly
-- Tasks the user explicitly says "you do" or "don't delegate"
+Use `deepseek-v4-flash` only for quick summaries/drafts where speed > depth.
