@@ -1,6 +1,6 @@
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import { callDeepSeek } from './client.mjs';
-import { listModels, getDefaultModel } from './models.mjs';
+import { MODELS, listModels, getDefaultModel } from './models.mjs';
 import { buildFooter } from './pricing.mjs';
 import { color, bold, dim } from './colors.mjs';
 
@@ -66,10 +66,23 @@ export async function handleToolCall(name, args) {
 
       // Read files server-side — bytes stay in the MCP process, never in Claude's context
       let resolvedArgs = args;
-      if (args.files && args.files.length > 0) {
-        const sections = args.files.map((p) => {
+      const filePaths = Array.isArray(args.files) ? args.files.filter((p) => typeof p === 'string') : [];
+      if (filePaths.length > 0) {
+        const modelInfo = MODELS[model] || MODELS[getDefaultModel()];
+        // Rough guard: ~3 chars per token; leave half the context for output + prompt
+        const maxFileBytes = Math.floor((modelInfo.contextWindow / 2) * 3);
+        let totalBytes = 0;
+
+        const sections = filePaths.map((p) => {
           try {
-            const ext = p.split('.').pop() || '';
+            const size = statSync(p).size;
+            if (totalBytes + size > maxFileBytes) {
+              return `### ${p}\n(skipped: would exceed context window — ${(size / 1024).toFixed(1)}KB)`;
+            }
+            totalBytes += size;
+            const base = p.split('/').pop() || '';
+            const dot = base.lastIndexOf('.');
+            const ext = dot > 0 ? base.slice(dot + 1) : '';
             return `### ${p}\n\`\`\`${ext}\n${readFileSync(p, 'utf8')}\n\`\`\``;
           } catch (e) {
             return `### ${p}\n(error: ${e.message})`;
