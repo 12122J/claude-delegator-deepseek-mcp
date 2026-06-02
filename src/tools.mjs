@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'fs';
+import { readFile, stat } from 'fs/promises';
 import { callDeepSeek } from './client.mjs';
 import { MODELS, listModels, getDefaultModel } from './models.mjs';
 import { buildFooter } from './pricing.mjs';
@@ -73,21 +73,23 @@ export async function handleToolCall(name, args) {
         const maxFileBytes = Math.floor((modelInfo.contextWindow / 2) * 3);
         let totalBytes = 0;
 
-        const sections = filePaths.map((p) => {
-          try {
-            const size = statSync(p).size;
-            if (totalBytes + size > maxFileBytes) {
-              return `### ${p}\n(skipped: would exceed context window — ${(size / 1024).toFixed(1)}KB)`;
+        const sections = await Promise.all(
+          filePaths.map(async (p) => {
+            try {
+              const size = (await stat(p)).size;
+              if (totalBytes + size > maxFileBytes) {
+                return `### ${p}\n(skipped: would exceed context window — ${(size / 1024).toFixed(1)}KB)`;
+              }
+              totalBytes += size;
+              const base = p.split('/').pop() || '';
+              const dot = base.lastIndexOf('.');
+              const ext = dot > 0 ? base.slice(dot + 1) : '';
+              return `### ${p}\n\`\`\`${ext}\n${await readFile(p, 'utf8')}\n\`\`\``;
+            } catch (e) {
+              return `### ${p}\n(error: ${e.message})`;
             }
-            totalBytes += size;
-            const base = p.split('/').pop() || '';
-            const dot = base.lastIndexOf('.');
-            const ext = dot > 0 ? base.slice(dot + 1) : '';
-            return `### ${p}\n\`\`\`${ext}\n${readFileSync(p, 'utf8')}\n\`\`\``;
-          } catch (e) {
-            return `### ${p}\n(error: ${e.message})`;
-          }
-        });
+          })
+        );
         resolvedArgs = {
           ...args,
           prompt: args.prompt + '\n\n## FILES:\n\n' + sections.join('\n\n'),
