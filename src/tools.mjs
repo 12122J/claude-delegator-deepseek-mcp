@@ -1,5 +1,6 @@
 import { callDeepSeek } from './client.mjs';
 import { listModels, getDefaultModel } from './models.mjs';
+import { buildFooter } from './pricing.mjs';
 
 export const TOOLS = [
   {
@@ -51,11 +52,9 @@ export async function handleToolCall(name, args) {
   switch (name) {
     case 'deepseek': {
       const result = await callDeepSeek(args);
-      const usage = result.usage
-        ? `\n\n---\n*Model: ${result.model} | Tokens: ${result.usage.totalTokens} (${result.usage.promptTokens}p + ${result.usage.completionTokens}c) | Finish: ${result.finishReason}*`
-        : '';
+      const footer = buildFooter(result, args.model || getDefaultModel());
       return {
-        content: [{ type: 'text', text: result.content + usage }],
+        content: [{ type: 'text', text: result.content + '\n' + footer }],
       };
     }
     case 'deepseek_models': {
