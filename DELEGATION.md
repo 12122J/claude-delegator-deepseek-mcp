@@ -45,7 +45,25 @@ Synthesize result, don't echo verbatim.
 
 Use `deepseek-v4-flash` only for quick summaries/drafts where speed > depth.
 
-## PreToolUse Hook (stronger enforcement)
+## PreToolUse Hooks (stronger enforcement)
+
+### Block large file reads
+
+Add this hook to block `Read` calls on files over 300 lines, forcing delegation instead:
+
+```json
+{
+  "matcher": "Read",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "jq -r '.tool_input.file_path // empty' | { read -r f; if [ -z \"$f\" ]; then exit 0; fi; lines=$(wc -l < \"$f\" 2>/dev/null | tr -d ' '); if [ \"$lines\" -gt 300 ]; then jq -n --argjson l \"$lines\" --arg p \"$f\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",additionalContext:(\"READ BLOCKED: \"+$p+\" is \"+($l|tostring)+\" lines. Do NOT read this file into context. Estimate scope and ask the user: Delegate to DeepSeek? (y/n). If yes, pass the path via files[] to deepseek() — never load large files into Claude context first.\")}}'; fi; }"
+    }
+  ]
+}
+```
+
+### Block large skill invocations
 
 Add this to `~/.claude/settings.json` so the gate fires automatically before every Skill invocation:
 

@@ -1,6 +1,6 @@
 {
   "name": "claude-code-deepseek-delegator",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "MCP server that lets Claude Code delegate heavy-token tasks to DeepSeek. Claude orchestrates; DeepSeek does the heavy lifting. Zero dependencies.",
   "type": "module",
   "bin": {
