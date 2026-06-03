@@ -60,6 +60,8 @@ For Claude to automatically suggest delegation before heavy tasks, add the rules
 
 Once added, Claude will ask **"Delegate to DeepSeek? (y/n)"** before any operation that exceeds ~300 lines, 3+ files, or 500+ words of output.
 
+For stronger enforcement, add the PreToolUse hook from [DELEGATION.md](DELEGATION.md) to `~/.claude/settings.json` — it fires before every skill invocation and injects a mandatory scope-check directly into the model context.
+
 ```
 > This task analyzes ~800 lines across 4 files.
 > Delegate to DeepSeek? (y/n)

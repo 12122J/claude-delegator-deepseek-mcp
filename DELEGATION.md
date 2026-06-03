@@ -6,8 +6,11 @@ Copy these rules into `~/.claude/CLAUDE.md`. Once added, Claude will ask **"Dele
 
 ## DeepSeek Delegation (MANDATORY GATE)
 
+**Estimate scope FIRST — before invoking any skill, writing any code, or reading any files.** The gate fires on intent, not on output.
+
 Before ANY of the following operations, you MUST stop and ask: **"Delegate to DeepSeek? (y/n)"**
 
+- Invoking a skill where the resulting work would exceed the thresholds below
 - Read/analyze/grep files > 300 lines total
 - Write/edit/create > 200 lines of code
 - Generate specs, docs, plans, or architecture > 500 words
@@ -24,7 +27,11 @@ Before ANY of the following operations, you MUST stop and ask: **"Delegate to De
 
 **If y/yes:** Call `deepseek` tool with model `deepseek-v4-pro`. Announce `> Delegating to DeepSeek (deepseek-v4-pro)...`
 
-**CRITICAL — do NOT read files before delegating.** Pass file paths via the `files` parameter instead of reading them with Read/cat and embedding content in `prompt`. The MCP server reads the files itself — this keeps file bytes out of Claude's context window entirely.
+**If n/no:** Proceed yourself.
+
+**Never skip the prompt.** Not even for "obvious" cases. The gate is mandatory.
+
+**NEVER read files before delegating.** Pass file paths via `files[]`. The MCP server reads them directly — file bytes never touch Claude's context window.
 
 ```
 // RIGHT — file bytes never touch Claude's context
@@ -36,8 +43,28 @@ deepseek(prompt: "Audit for bugs", files: ["/abs/path/a.py", "/abs/path/b.py"])
 
 Synthesize result, don't echo verbatim.
 
-**If n/no:** Proceed yourself.
-
-**Never skip the prompt.** Not even for "obvious" cases. The gate is mandatory.
-
 Use `deepseek-v4-flash` only for quick summaries/drafts where speed > depth.
+
+## PreToolUse Hook (stronger enforcement)
+
+Add this to `~/.claude/settings.json` so the gate fires automatically before every Skill invocation:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq '{hookSpecificOutput: {hookEventName: \"PreToolUse\", additionalContext: (\"DEEPSEEK GATE — skill: \" + (.tool_input.skill // \"?\") + \". Estimate total token cost BEFORE loading this skill. If the resulting work involves >200 lines of code, >3 files, >4k tokens output, or analysis of large content — STOP and ask the user: Delegate to DeepSeek? (y/n). This is mandatory. No exceptions. No rationalising.\")}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This injects a reminder into the model context before every skill load — the gate cannot be rationalized away.
