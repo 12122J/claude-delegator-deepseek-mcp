@@ -43,18 +43,14 @@ Add to `~/.claude/mcp.json`:
       "command": "npx",
       "args": ["claude-code-deepseek-delegator"],
       "env": {
-        "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}"
+        "DEEPSEEK_API_KEY": "sk-your-key-here"
       }
     }
   }
 }
 ```
 
-Set your API key:
-
-```bash
-export DEEPSEEK_API_KEY="sk-your-key-here"
-```
+Paste your API key directly into the `env` block. Claude Code does not expand shell variables in `mcp.json` — the value must be the literal key string.
 
 Restart Claude Code. The `deepseek` tool is now available.
 
