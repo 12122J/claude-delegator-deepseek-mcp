@@ -115,49 +115,54 @@ export function parseFrames(input, onMessage) {
   return { consumed, remainder: buf };
 }
 
-process.stdin.on('data', (chunk) => {
-  buffer += chunk.toString();
-  if (buffer.length > MAX_BUFFER_SIZE) {
-    process.stderr.write(`WARNING: buffer exceeded ${MAX_BUFFER_SIZE} bytes — flushing to prevent memory exhaustion\n`);
-    buffer = '';
-  }
-  const { remainder } = parseFrames(buffer, (msg) => {
-    const promise = handle(msg.method, msg.id, msg.params || {}).catch((err) => {
-      if (msg.id !== undefined) error(msg.id, -32603, err.message);
+// Only start the stdio MCP server when this file is the entry point (not imported for tests).
+const isMain = process.argv[1] && (process.argv[1].endsWith('/index.mjs') || process.argv[1].endsWith('\\index.mjs'));
+
+if (isMain) {
+  process.stdin.on('data', (chunk) => {
+    buffer += chunk.toString();
+    if (buffer.length > MAX_BUFFER_SIZE) {
+      process.stderr.write(`WARNING: buffer exceeded ${MAX_BUFFER_SIZE} bytes — flushing to prevent memory exhaustion\n`);
+      buffer = '';
+    }
+    const { remainder } = parseFrames(buffer, (msg) => {
+      const promise = handle(msg.method, msg.id, msg.params || {}).catch((err) => {
+        if (msg.id !== undefined) error(msg.id, -32603, err.message);
+      });
+      inFlightRequests.add(promise);
+      promise.finally(() => inFlightRequests.delete(promise));
     });
-    inFlightRequests.add(promise);
-    promise.finally(() => inFlightRequests.delete(promise));
+    buffer = remainder;
   });
-  buffer = remainder;
-});
 
-// Graceful shutdown: wait up to 5s for in-flight requests to complete
-async function gracefulShutdown(signal) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  process.stderr.write(`${signal || 'stdin end'} received, shutting down gracefully...\n`);
+  // Graceful shutdown: wait up to 5s for in-flight requests to complete
+  async function gracefulShutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    process.stderr.write(`${signal || 'stdin end'} received, shutting down gracefully...\n`);
 
-  if (inFlightRequests.size > 0) {
-    process.stderr.write(`Waiting for ${inFlightRequests.size} in-flight request(s) to complete (max 5s)...\n`);
-    const GRACEFUL_TIMEOUT = 5000;
-    const timeout = new Promise((r) =>
-      setTimeout(() => {
-        process.stderr.write('Graceful shutdown timeout reached, exiting.\n');
-        r();
-      }, GRACEFUL_TIMEOUT)
-    );
-    await Promise.race([
-      Promise.allSettled([...inFlightRequests]),
-      timeout,
-    ]);
+    if (inFlightRequests.size > 0) {
+      process.stderr.write(`Waiting for ${inFlightRequests.size} in-flight request(s) to complete (max 5s)...\n`);
+      const GRACEFUL_TIMEOUT = 5000;
+      const timeout = new Promise((r) =>
+        setTimeout(() => {
+          process.stderr.write('Graceful shutdown timeout reached, exiting.\n');
+          r();
+        }, GRACEFUL_TIMEOUT)
+      );
+      await Promise.race([
+        Promise.allSettled([...inFlightRequests]),
+        timeout,
+      ]);
+    }
+
+    process.exit(0);
   }
 
-  process.exit(0);
+  process.stdin.on('end', () => gracefulShutdown('stdin end'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  // Startup log to stderr (not stdout — MCP uses stdout for JSON-RPC)
+  process.stderr.write(`${SERVER_NAME} v${SERVER_VERSION} ready. Default model: ${getDefaultModel()}\n`);
 }
-
-process.stdin.on('end', () => gracefulShutdown('stdin end'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// Startup log to stderr (not stdout — MCP uses stdout for JSON-RPC)
-process.stderr.write(`${SERVER_NAME} v${SERVER_VERSION} ready. Default model: ${getDefaultModel()}\n`);
