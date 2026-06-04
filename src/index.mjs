@@ -3,7 +3,6 @@
 // Zero dependencies — Node.js 20+ built-ins only.
 // JSON-RPC 2.0 over stdio with Content-Length framing (MCP spec compliant).
 
-import { createInterface } from 'readline';
 import { handleToolCall, TOOLS } from './tools.mjs';
 import { getDefaultModel } from './models.mjs';
 
