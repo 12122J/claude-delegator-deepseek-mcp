@@ -23,7 +23,7 @@ export function formatCost(amount) {
 
 export function formatSavings(deepseekCost, claudeCost) {
   const saved = claudeCost - deepseekCost;
-  const pct = claudeCost > 0 ? ((saved / claudeCost) * 100).toFixed(0) : 0;
+  const pct = claudeCost > 0 ? Math.round((saved / claudeCost) * 100) : 0;
   return { saved, pct };
 }
 
