@@ -10,6 +10,7 @@ const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_NAME = 'claude-code-deepseek-delegator';
 const SERVER_VERSION = '2.0.0';
 
+const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB — MCP messages should never exceed a few KB
 let buffer = '';
 let initialized = false;
 
@@ -111,6 +112,10 @@ export function parseFrames(input, onMessage) {
 
 process.stdin.on('data', (chunk) => {
   buffer += chunk.toString();
+  if (buffer.length > MAX_BUFFER_SIZE) {
+    process.stderr.write(`WARNING: buffer exceeded ${MAX_BUFFER_SIZE} bytes — flushing to prevent memory exhaustion\n`);
+    buffer = '';
+  }
   const { remainder } = parseFrames(buffer, (msg) => {
     handle(msg.method, msg.id, msg.params || {}).catch((err) => {
       if (msg.id !== undefined) error(msg.id, -32603, err.message);
