@@ -89,6 +89,7 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
                       promptTokens: json.usage.prompt_tokens,
                       completionTokens: json.usage.completion_tokens,
                       totalTokens: json.usage.total_tokens,
+                      cachedPromptTokens: json.usage.prompt_tokens_details?.cached_tokens || 0,
                     }
                   : null,
                 finishReason: choice?.finish_reason ?? 'unknown',

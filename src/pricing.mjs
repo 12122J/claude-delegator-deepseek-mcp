@@ -3,9 +3,9 @@
 import { color, bold, dim } from './colors.mjs';
 
 export const PRICING = {
-  'deepseek-v4-pro': { input: 0.435, output: 0.87 },
-  'deepseek-v4-flash': { input: 0.14, output: 0.28 },
-  'deepseek-reasoner': { input: 0.55, output: 2.19 },
+  'deepseek-v4-pro': { input: 0.435, output: 0.87, cache: 0.003625 },
+  'deepseek-v4-flash': { input: 0.14, output: 0.28, cache: 0.0012 },
+  'deepseek-reasoner': { input: 0.55, output: 2.19, cache: 0.0046 },
 };
 
 // Claude comparison baseline (Sonnet 4)
@@ -39,10 +39,27 @@ export function buildFooter(result, model) {
   const lines = [
     '',
     dim('─── claude-code-deepseek-delegator · cost ───'),
-    `${color('green', 'deepseek')} ${dim(model.replace('deepseek-',''))} ${color('dim', formatCost(dsCost))}  │  ${color('yellow', 'claude sonnet 4')} ${dim(formatCost(claudeCost))}`,
-    `${color('green', 'saved')} ${bold(formatCost(saved))} ${color('green', '(' + pct + '%)')}  │  ${dim(usage.totalTokens.toLocaleString() + ' tokens')} ${color('dim', '(' + usage.promptTokens.toLocaleString() + 'p + ' + usage.completionTokens.toLocaleString() + 'c)')}`,
-    dim('────────────────────────────────'),
+    `${color('green', 'deepseek')} ${dim(model.replace('deepseek-',''))} ${dim(formatCost(dsCost))}  │  ${color('yellow', 'claude sonnet 4')} ${dim(formatCost(claudeCost))}`,
   ];
+
+  // Show cache breakdown when cache hits were reported
+  const cached = usage.cachedPromptTokens || 0;
+  if (cached > 0 && dsPricing.cache) {
+    const cacheCost = (cached / 1_000_000) * dsPricing.cache;
+    const computePromptTokens = usage.promptTokens - cached;
+    const computePricing = { ...dsPricing };
+    // Compute cost uses cache-miss (input) rate for non-cached prompt tokens
+    computePricing.cache = undefined;
+    const computeCost = calculateCost(computePromptTokens, usage.completionTokens, computePricing);
+    lines.push(
+      `  ${dim('cache')} ${dim(formatCost(cacheCost))} + ${dim('compute')} ${dim(formatCost(computeCost))}`
+    );
+  }
+
+  lines.push(
+    `${color('green', 'saved')} ${bold(formatCost(saved))} ${color('green', '(' + pct + '%)')}  │  ${dim(usage.totalTokens.toLocaleString() + ' tokens')} ${dim('(' + usage.promptTokens.toLocaleString() + 'p + ' + usage.completionTokens.toLocaleString() + 'c)')}`,
+    dim('────────────────────────────────'),
+  );
 
   return lines.join('\n');
 }
