@@ -2,7 +2,7 @@ import { readFile, stat } from 'fs/promises';
 import { basename, extname } from 'path';
 import { callDeepSeek } from './client.mjs';
 import { MODELS, listModels, getDefaultModel } from './models.mjs';
-import { buildFooter } from './pricing.mjs';
+import { buildFooter, PRICING } from './pricing.mjs';
 import { color, bold, dim } from './colors.mjs';
 
 export const TOOLS = [
@@ -114,10 +114,16 @@ export async function handleToolCall(name, args) {
         dim('─── claude-code-deepseek-delegator · models ───'),
         '',
         ...models.map(
-          (m) =>
-            `${color('green', '●')} ${bold(m.id)} ${dim('— ' + m.name)}\n` +
-            `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('thinking:')} ${m.thinking ? color('green', 'on') : color('yellow', 'off')}\n` +
-            `  ${dim(m.description)}\n`
+          (m) => {
+            const p = PRICING[m.id] || {};
+            const priceStr = p.input ? `  ${dim('pricing:')} $${p.input}/$${p.output} per 1M tokens in/out\n` : '';
+            return (
+              `${color('green', '●')} ${bold(m.id)} ${dim('— ' + m.name)}\n` +
+              `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('thinking:')} ${m.thinking ? color('green', 'on') : color('yellow', 'off')}\n` +
+              priceStr +
+              `  ${dim(m.description)}\n`
+            );
+          }
         ),
         dim('─────────────────────────────────────'),
       ].join('\n');
