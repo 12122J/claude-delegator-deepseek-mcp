@@ -1,4 +1,5 @@
 // ANSI color helpers — Claude Code CLI aesthetic (Tokyo Night palette)
+// Respects NO_COLOR env var and non-TTY stdout (fixes #4)
 
 const noColor = process.env.NO_COLOR || !process.stdout.isTTY;
 
