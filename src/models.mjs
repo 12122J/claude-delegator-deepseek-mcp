@@ -35,6 +35,7 @@ export function listModels() {
     id,
     name: info.name,
     contextWindow: info.contextWindow,
+    maxOutputTokens: info.maxOutputTokens,
     thinking: info.thinking,
     description: info.description,
   }));

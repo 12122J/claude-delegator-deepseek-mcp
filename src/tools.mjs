@@ -116,7 +116,7 @@ export async function handleToolCall(name, args) {
         ...models.map(
           (m) =>
             `${color('green', '●')} ${bold(m.id)} ${dim('— ' + m.name)}\n` +
-            `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('thinking:')} ${m.thinking ? color('green', 'on') : color('yellow', 'off')}\n` +
+            `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('output:')} ${(m.maxOutputTokens / 1024).toFixed(0)}K max  ${dim('thinking:')} ${m.thinking ? color('green', 'on') : color('yellow', 'off')}\n` +
             `  ${dim(m.description)}\n`
         ),
         dim('─────────────────────────────────────'),
