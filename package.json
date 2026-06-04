@@ -14,7 +14,8 @@
   ],
   "scripts": {
     "start": "node src/index.mjs",
-    "dev": "node --watch src/index.mjs"
+    "dev": "node --watch src/index.mjs",
+    "test": "node test/frame-parsing.test.mjs"
   },
   "keywords": [
     "mcp",
