@@ -60,26 +60,36 @@ async function handle(method, id, params) {
 }
 
 // Content-Length framed JSON-RPC reader
-process.stdin.on('data', (chunk) => {
-  buffer += chunk.toString();
+// Exported for testing
+export function parseFrames(input, onMessage) {
+  let buf = input;
+  const consumed = [];
 
   while (true) {
-    const headerEnd = buffer.indexOf('\r\n\r\n');
+    const headerEnd = buf.indexOf('\r\n\r\n');
     if (headerEnd === -1) break;
 
-    const header = buffer.slice(0, headerEnd);
-    const contentLengthMatch = header.match(/Content-Length:\s*(\d+)/i);
-    if (!contentLengthMatch) {
-      buffer = buffer.slice(headerEnd + 4);
+    const header = buf.slice(0, headerEnd);
+    // Reject frames with duplicate Content-Length headers (RFC 9112 §6.5.7)
+    const clMatches = header.match(/^Content-Length:\s*(\d+)/gim);
+    if (!clMatches) {
+      // No Content-Length header — discard as malformed
+      buf = buf.slice(headerEnd + 4);
+      continue;
+    }
+    if (clMatches.length > 1) {
+      // Malformed: multiple Content-Length headers — discard frame
+      buf = buf.slice(headerEnd + 4);
       continue;
     }
 
+    const contentLengthMatch = header.match(/^Content-Length:\s*(\d+)/im);
     const contentLength = parseInt(contentLengthMatch[1], 10);
     const bodyStart = headerEnd + 4;
-    if (buffer.length < bodyStart + contentLength) break;
+    if (buf.length < bodyStart + contentLength) break;
 
-    const body = buffer.slice(bodyStart, bodyStart + contentLength);
-    buffer = buffer.slice(bodyStart + contentLength);
+    const body = buf.slice(bodyStart, bodyStart + contentLength);
+    buf = buf.slice(bodyStart + contentLength);
 
     let msg;
     try {
@@ -88,10 +98,21 @@ process.stdin.on('data', (chunk) => {
       continue;
     }
 
+    consumed.push(body);
+    if (onMessage) onMessage(msg);
+  }
+
+  return { consumed, remainder: buf };
+}
+
+process.stdin.on('data', (chunk) => {
+  buffer += chunk.toString();
+  const { remainder } = parseFrames(buffer, (msg) => {
     handle(msg.method, msg.id, msg.params || {}).catch((err) => {
       if (msg.id !== undefined) error(msg.id, -32603, err.message);
     });
-  }
+  });
+  buffer = remainder;
 });
 
 // Graceful shutdown
