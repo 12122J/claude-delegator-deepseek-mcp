@@ -37,6 +37,9 @@ async function handle(method, id, params) {
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
       });
 
+    case 'ping':
+      return respond(id, {});
+
     case 'notifications/initialized':
       return;
 
