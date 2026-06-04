@@ -1,4 +1,5 @@
 // Pricing per 1M tokens (USD). Updated June 2026.
+// NOTE: Pricing must stay in sync with models.mjs — add entries to both files.
 
 import { color, bold, dim } from './colors.mjs';
 

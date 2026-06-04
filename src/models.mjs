@@ -1,5 +1,6 @@
 // DeepSeek model registry
 // Each entry defines model capabilities, context window, and pricing tier.
+// NOTE: Models must stay in sync with pricing.mjs — add entries to both files.
 
 export const MODELS = {
   'deepseek-v4-pro': {
