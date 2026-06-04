@@ -51,10 +51,7 @@ async function handle(method, id, params) {
         const result = await handleToolCall(name, args || {});
         return respond(id, result);
       } catch (err) {
-        return respond(id, {
-          content: [{ type: 'text', text: `Error: ${err.message}` }],
-          isError: true,
-        });
+        return error(id, -32000, err.message);
       }
     }
 
