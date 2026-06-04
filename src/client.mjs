@@ -37,7 +37,7 @@ async function callWithRetry(fn, retries = MAX_RETRIES) {
   throw lastErr;
 }
 
-export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', temperature = 0.7, maxTokens }) {
+export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', temperature = 0.3, maxTokens }) {
   if (!API_KEY) throw new DeepSeekError('DEEPSEEK_API_KEY environment variable is not set', 401);
 
   const modelInfo = MODELS[model];

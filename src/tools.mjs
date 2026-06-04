@@ -31,8 +31,8 @@ export const TOOLS = [
         },
         temperature: {
           type: 'number',
-          description: 'Temperature (0-2). Lower = more deterministic. Default: 0.7',
-          default: 0.7,
+          description: 'Temperature (0-2). Lower = more deterministic. Default: 0.3',
+          default: 0.3,
         },
         maxTokens: {
           type: 'number',
