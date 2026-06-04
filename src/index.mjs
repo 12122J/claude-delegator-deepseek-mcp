@@ -12,6 +12,7 @@ const SERVER_NAME = 'claude-code-deepseek-delegator';
 const SERVER_VERSION = '2.0.0';
 
 let buffer = '';
+let initialized = false;
 
 function send(msg) {
   const payload = JSON.stringify(msg);
@@ -29,6 +30,7 @@ function error(id, code, message) {
 async function handle(method, id, params) {
   switch (method) {
     case 'initialize':
+      initialized = true;
       return respond(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
@@ -39,9 +41,11 @@ async function handle(method, id, params) {
       return;
 
     case 'tools/list':
+      if (!initialized) return error(id, -32002, 'Server not initialized');
       return respond(id, { tools: TOOLS });
 
     case 'tools/call': {
+      if (!initialized) return error(id, -32002, 'Server not initialized');
       const { name, arguments: args } = params;
       try {
         const result = await handleToolCall(name, args || {});
@@ -55,6 +59,10 @@ async function handle(method, id, params) {
     }
 
     default:
+      if (!initialized) {
+        if (id !== undefined) error(id, -32002, 'Server not initialized');
+        return;
+      }
       if (id !== undefined) error(id, -32601, `Method not found: ${method}`);
   }
 }
