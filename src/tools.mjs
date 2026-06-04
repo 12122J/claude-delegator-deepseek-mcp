@@ -38,6 +38,13 @@ export const TOOLS = [
           type: 'number',
           description: 'Max tokens in response. Default: model max',
         },
+        stream: {
+          type: 'boolean',
+          description:
+            'Stream the response as incremental chunks instead of buffering the full output. ' +
+            'Recommended for large outputs (>50K tokens) to reduce memory pressure. Default: false',
+          default: false,
+        },
         files: {
           type: 'array',
           items: { type: 'string' },
@@ -104,6 +111,17 @@ export async function handleToolCall(name, args) {
       ].join('\n');
 
       const footer = buildFooter(result, model);
+
+      // Streamed responses: return each chunk as a separate content item
+      if (result.streamed && Array.isArray(result.content)) {
+        const items = [{ type: 'text', text: header }];
+        for (const chunk of result.content) {
+          items.push({ type: 'text', text: chunk });
+        }
+        items.push({ type: 'text', text: footer });
+        return { content: items };
+      }
+
       return {
         content: [{ type: 'text', text: header + result.content + footer }],
       };
