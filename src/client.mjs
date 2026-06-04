@@ -37,7 +37,72 @@ async function callWithRetry(fn, retries = MAX_RETRIES) {
   throw lastErr;
 }
 
-export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', temperature = 0.3, maxTokens }) {
+/**
+ * Parse SSE (Server-Sent Events) stream from a response.
+ * Reads lines from the stream, extracts `data:` lines, parses JSON,
+ * and aggregates content deltas into an array of text chunks.
+ */
+function parseSSEStream(res) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let buffer = '';
+    let model = null;
+    let usage = null;
+    let finishReason = 'unknown';
+
+    res.on('data', (data) => {
+      buffer += data.toString();
+      const lines = buffer.split('\n');
+      // Keep the last (potentially incomplete) line in the buffer
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+
+        const payload = trimmed.slice(5).trim();
+        if (payload === '[DONE]') continue;
+
+        try {
+          const json = JSON.parse(payload);
+          if (json.error) {
+            return reject(new DeepSeekError(json.error.message, res.statusCode, json.error));
+          }
+          const choice = json.choices?.[0];
+          const delta = choice?.delta;
+          if (delta?.content) {
+            chunks.push(delta.content);
+          }
+          if (!model && json.model) model = json.model;
+          if (json.usage) {
+            usage = {
+              promptTokens: json.usage.prompt_tokens,
+              completionTokens: json.usage.completion_tokens,
+              totalTokens: json.usage.total_tokens,
+            };
+          }
+          if (choice?.finish_reason) finishReason = choice.finish_reason;
+        } catch {
+          // Skip malformed SSE lines
+        }
+      }
+    });
+
+    res.on('end', () => {
+      resolve({
+        streamed: true,
+        content: chunks,
+        model,
+        usage,
+        finishReason,
+      });
+    });
+
+    res.on('error', reject);
+  });
+}
+
+export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', temperature = 0.3, maxTokens, stream = false }) {
   if (!API_KEY) throw new DeepSeekError('DEEPSEEK_API_KEY environment variable is not set', 401);
 
   const modelInfo = MODELS[model];
@@ -52,8 +117,63 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
     messages,
     temperature,
     max_tokens: maxTokens || modelInfo.maxOutputTokens,
+    stream: stream || undefined,
   };
 
+  // Streaming path: parse SSE, return array of content chunks
+  if (stream) {
+    body.stream = true;
+    return callWithRetry(() => {
+      return new Promise((resolve, reject) => {
+        const payload = JSON.stringify(body);
+
+        const req = request(
+          {
+            hostname: API_HOST,
+            path: '/v1/chat/completions',
+            method: 'POST',
+            timeout: TIMEOUT_MS,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${API_KEY}`,
+              'Content-Length': Buffer.byteLength(payload),
+              Accept: 'text/event-stream',
+            },
+          },
+          (res) => {
+            if (res.statusCode >= 400) {
+              let data = '';
+              res.on('data', (chunk) => (data += chunk));
+              res.on('end', () => {
+                try {
+                  const json = JSON.parse(data);
+                  reject(new DeepSeekError(json.error?.message || `HTTP ${res.statusCode}`, res.statusCode, json.error));
+                } catch {
+                  reject(new DeepSeekError(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`, res.statusCode));
+                }
+              });
+              return;
+            }
+            parseSSEStream(res).then(resolve, reject);
+          }
+        );
+
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new DeepSeekError(`Request timed out after ${TIMEOUT_MS / 1000}s`, 408));
+        });
+
+        req.on('error', (err) => {
+          reject(new DeepSeekError(err.message, 0));
+        });
+
+        req.write(payload);
+        req.end();
+      });
+    });
+  }
+
+  // Non-streaming path (unchanged)
   return callWithRetry(() => {
     return new Promise((resolve, reject) => {
       const payload = JSON.stringify(body);
