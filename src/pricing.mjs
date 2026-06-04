@@ -36,11 +36,19 @@ export function buildFooter(result, model) {
   const claudeCost = calculateCost(usage.promptTokens, usage.completionTokens, CLAUDE_PRICING);
   const { saved, pct } = formatSavings(dsCost, claudeCost);
 
+  const modelStr = model.replace('deepseek-', '');
+  const dsCostStr = formatCost(dsCost);
+  const claudeCostStr = formatCost(claudeCost);
+  const savedStr = formatCost(saved);
+  const totalStr = usage.totalTokens.toLocaleString();
+  const promptStr = usage.promptTokens.toLocaleString();
+  const completionStr = usage.completionTokens.toLocaleString();
+
   const lines = [
     '',
     dim('─── claude-code-deepseek-delegator · cost ───'),
-    `${color('green', 'deepseek')} ${dim(model.replace('deepseek-',''))} ${color('dim', formatCost(dsCost))}  │  ${color('yellow', 'claude sonnet 4')} ${dim(formatCost(claudeCost))}`,
-    `${color('green', 'saved')} ${bold(formatCost(saved))} ${color('green', '(' + pct + '%)')}  │  ${dim(usage.totalTokens.toLocaleString() + ' tokens')} ${color('dim', '(' + usage.promptTokens.toLocaleString() + 'p + ' + usage.completionTokens.toLocaleString() + 'c)')}`,
+    `${color('green', 'deepseek')} ${dim(modelStr)} ${dim(dsCostStr)}  │  ${color('yellow', 'claude sonnet 4')} ${dim(claudeCostStr)}`,
+    `${color('green', 'saved')} ${bold(savedStr)} ${color('green', '(' + pct + '%)')}  │  ${dim(totalStr + ' tokens')} ${dim('(' + promptStr + 'p + ' + completionStr + 'c)')}`,
     dim('────────────────────────────────'),
   ];
 
