@@ -106,7 +106,8 @@ List available models with capabilities, context windows, and thinking support.
 |-------|---------|----------|----------|
 | `deepseek-v4-pro` | 1M | Yes | Complex analysis, architecture, code |
 | `deepseek-v4-flash` | 1M | Optional | Fast/cheap tasks |
-| `deepseek-reasoner` | 64K | Yes | Math, logic, step-by-step |
+
+> **Deprecated**: `deepseek-chat` → use `deepseek-v4-pro`. `deepseek-reasoner` (r1) has been removed — use `deepseek-v4-pro` instead. Scheduled for removal 2026-07-24.
 
 ## Features
 
@@ -133,7 +134,6 @@ List available models with capabilities, context windows, and thinking support.
 |-------|-------------------|---------------------|
 | `deepseek-v4-pro` | $0.435 | $0.87 |
 | `deepseek-v4-flash` | $0.14 | $0.28 |
-| `deepseek-reasoner` | $0.55 | $2.19 |
 | *Claude Sonnet 4 (comparison)* | $3.00 | $15.00 |
 
 You get free credits on signup at [platform.deepseek.com](https://platform.deepseek.com).

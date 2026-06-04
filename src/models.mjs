@@ -1,5 +1,9 @@
 // DeepSeek model registry
 // Each entry defines model capabilities, context window, and pricing tier.
+//
+// DEPRECATED ALIASES (removed 2026-07-24):
+//   deepseek-chat    → use deepseek-v4-pro
+//   deepseek-reasoner → use deepseek-v4-pro (was r1 reasoning model, no longer available)
 
 export const MODELS = {
   'deepseek-v4-pro': {
@@ -15,13 +19,6 @@ export const MODELS = {
     maxOutputTokens: 384_000,
     thinking: true,
     description: 'Faster and cheaper model. Best for simpler tasks, quick answers, and when latency matters more than depth.',
-  },
-  'deepseek-reasoner': {
-    name: 'DeepSeek Reasoner',
-    contextWindow: 65536,
-    maxOutputTokens: 8192,
-    thinking: true,
-    description: 'Specialized reasoning model. Best for math, logic, and problems requiring step-by-step deduction.',
   },
 };
 

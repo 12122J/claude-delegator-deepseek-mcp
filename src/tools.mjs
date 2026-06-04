@@ -26,7 +26,7 @@ export const TOOLS = [
         },
         model: {
           type: 'string',
-          description: `DeepSeek model. Default: ${getDefaultModel()}. Options: deepseek-v4-pro (smartest, thinking), deepseek-v4-flash (fast/cheap), deepseek-reasoner (math/logic)`,
+          description: `DeepSeek model. Default: ${getDefaultModel()}. Options: deepseek-v4-pro (smartest, thinking), deepseek-v4-flash (fast/cheap)`,
           default: getDefaultModel(),
         },
         temperature: {

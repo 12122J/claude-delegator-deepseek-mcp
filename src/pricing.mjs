@@ -5,7 +5,6 @@ import { color, bold, dim } from './colors.mjs';
 export const PRICING = {
   'deepseek-v4-pro': { input: 0.435, output: 0.87 },
   'deepseek-v4-flash': { input: 0.14, output: 0.28 },
-  'deepseek-reasoner': { input: 0.55, output: 2.19 },
 };
 
 // Claude comparison baseline (Sonnet 4)
