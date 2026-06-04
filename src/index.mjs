@@ -124,6 +124,10 @@ process.stdin.on('data', (chunk) => {
 });
 
 // Graceful shutdown
+process.stdin.on('end', () => {
+  process.stderr.write('stdin closed, shutting down\n');
+  process.exit(0);
+});
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
 
