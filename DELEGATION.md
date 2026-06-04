@@ -19,6 +19,16 @@ Before ANY of the following operations, you MUST stop and ask: **"Delegate to De
 - Complex reasoning (math, logic, multi-step deduction)
 - Any task where your response would exceed ~4k tokens
 
+### Threshold reference
+
+| Operation | Delegation threshold |
+|-----------|---------------------|
+| Read/analyze files | > 300 lines total |
+| Write/edit code | > 200 lines changed |
+| Generate documentation | > 500 words |
+| Multi-file review | 3+ files |
+| Web content fetch | > 5,000 chars response |
+
 **Format:** Print the scope estimate, then ask. Example:
 ```
 > This task analyzes ~800 lines across 4 files.
