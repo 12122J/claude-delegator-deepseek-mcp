@@ -15,7 +15,6 @@
   "scripts": {
     "start": "node src/index.mjs",
     "dev": "node --watch src/index.mjs",
-<<<<<<< HEAD
     "test": "node --test test/*.test.mjs"
   },
   "keywords": [
