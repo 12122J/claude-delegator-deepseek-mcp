@@ -71,9 +71,10 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
           },
         },
         (res) => {
-          let data = '';
-          res.on('data', (chunk) => (data += chunk));
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
           res.on('end', () => {
+            const data = Buffer.concat(chunks).toString();
             try {
               const json = JSON.parse(data);
               if (json.error) {
