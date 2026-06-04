@@ -6,8 +6,10 @@
   "bin": {
     "claude-code-deepseek-delegator": "src/index.mjs"
   },
+  "types": "types.d.ts",
   "files": [
     "src/",
+    "types.d.ts",
     "DELEGATION.md",
     ".env.example",
     "LICENSE"
