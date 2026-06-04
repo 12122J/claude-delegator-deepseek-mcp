@@ -75,6 +75,13 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
           let data = '';
           res.on('data', (chunk) => (data += chunk));
           res.on('end', () => {
+            if (res.statusCode >= 400) {
+              return reject(new DeepSeekError(
+                `DeepSeek API error (${res.statusCode}): ${data.slice(0, 200)}`,
+                res.statusCode,
+                { body: data.slice(0, 1000) }
+              ));
+            }
             try {
               const json = JSON.parse(data);
               if (json.error) {
