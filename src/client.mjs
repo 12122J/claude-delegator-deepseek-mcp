@@ -3,7 +3,8 @@ import { MODELS } from './models.mjs';
 
 const API_HOST = process.env.DEEPSEEK_API_HOST || 'api.deepseek.com';
 const API_KEY = process.env.DEEPSEEK_API_KEY;
-const TIMEOUT_MS = parseInt(process.env.DEEPSEEK_TIMEOUT || '120000', 10);
+const rawTimeout = parseInt(process.env.DEEPSEEK_TIMEOUT || '120000', 10);
+const TIMEOUT_MS = rawTimeout > 0 ? rawTimeout : 120000;
 const MAX_RETRIES = parseInt(process.env.DEEPSEEK_MAX_RETRIES || '2', 10);
 
 class DeepSeekError extends Error {
