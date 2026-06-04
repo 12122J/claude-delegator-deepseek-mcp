@@ -13,6 +13,8 @@ const SERVER_VERSION = '2.0.0';
 
 let buffer = '';
 let initialized = false;
+let shuttingDown = false;
+const inFlightRequests = new Set();
 
 function send(msg) {
   const payload = JSON.stringify(msg);
@@ -113,20 +115,42 @@ export function parseFrames(input, onMessage) {
 process.stdin.on('data', (chunk) => {
   buffer += chunk.toString();
   const { remainder } = parseFrames(buffer, (msg) => {
-    handle(msg.method, msg.id, msg.params || {}).catch((err) => {
+    const promise = handle(msg.method, msg.id, msg.params || {}).catch((err) => {
       if (msg.id !== undefined) error(msg.id, -32603, err.message);
     });
+    inFlightRequests.add(promise);
+    promise.finally(() => inFlightRequests.delete(promise));
   });
   buffer = remainder;
 });
 
-// Graceful shutdown
-process.stdin.on('end', () => {
-  process.stderr.write('stdin closed, shutting down\n');
+// Graceful shutdown: wait up to 5s for in-flight requests to complete
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  process.stderr.write(`${signal || 'stdin end'} received, shutting down gracefully...\n`);
+
+  if (inFlightRequests.size > 0) {
+    process.stderr.write(`Waiting for ${inFlightRequests.size} in-flight request(s) to complete (max 5s)...\n`);
+    const GRACEFUL_TIMEOUT = 5000;
+    const timeout = new Promise((r) =>
+      setTimeout(() => {
+        process.stderr.write('Graceful shutdown timeout reached, exiting.\n');
+        r();
+      }, GRACEFUL_TIMEOUT)
+    );
+    await Promise.race([
+      Promise.allSettled([...inFlightRequests]),
+      timeout,
+    ]);
+  }
+
   process.exit(0);
-});
-process.on('SIGTERM', () => process.exit(0));
-process.on('SIGINT', () => process.exit(0));
+}
+
+process.stdin.on('end', () => gracefulShutdown('stdin end'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Startup log to stderr (not stdout — MCP uses stdout for JSON-RPC)
 process.stderr.write(`${SERVER_NAME} v${SERVER_VERSION} ready. Default model: ${getDefaultModel()}\n`);
