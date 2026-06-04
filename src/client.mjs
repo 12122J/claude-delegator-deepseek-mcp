@@ -44,6 +44,30 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
   const modelInfo = MODELS[model];
   if (!modelInfo) throw new DeepSeekError(`Unknown model: ${model}. Available: ${Object.keys(MODELS).join(', ')}`, 400);
 
+  // --- Input parameter validation ---
+  if (typeof prompt !== 'string' || prompt.trim().length === 0) {
+    throw new DeepSeekError('prompt must be a non-empty string', 400);
+  }
+
+  if (typeof temperature === 'number') {
+    if (temperature < 0 || temperature > 2) {
+      throw new DeepSeekError(
+        `temperature must be between 0 and 2 (got ${temperature})`,
+        400
+      );
+    }
+  }
+
+  if (maxTokens !== undefined && maxTokens !== null) {
+    if (!Number.isInteger(maxTokens) || maxTokens <= 0) {
+      throw new DeepSeekError(
+        `maxTokens must be a positive integer (got ${maxTokens})`,
+        400
+      );
+    }
+  }
+  // --- End parameter validation ---
+
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: prompt });
