@@ -13,7 +13,7 @@ export const MODELS = {
     name: 'DeepSeek V4 Flash',
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
-    thinking: false,
+    thinking: true,
     description: 'Faster and cheaper model. Best for simpler tasks, quick answers, and when latency matters more than depth.',
   },
   'deepseek-reasoner': {
