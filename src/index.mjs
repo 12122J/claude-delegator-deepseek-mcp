@@ -8,7 +8,7 @@ import { getDefaultModel } from './models.mjs';
 
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_NAME = 'claude-code-deepseek-delegator';
-const SERVER_VERSION = '2.0.0';
+const SERVER_VERSION = '2.4.0';
 
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB — MCP messages should never exceed a few KB
 let buffer = '';

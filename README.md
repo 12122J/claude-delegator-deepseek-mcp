@@ -2,7 +2,7 @@
 
 MCP server that lets [Claude Code](https://claude.ai/code) delegate heavy-token tasks to DeepSeek. Claude orchestrates; DeepSeek does the heavy lifting.
 
-**One `deepseek` tool.** Zero dependencies. Saves ~90% on token costs vs Claude Sonnet 4.
+**One `deepseek` tool. No spawn. No daemon. Zero dependencies.**
 
 ```console
 ─── claude-code-deepseek-delegator
@@ -16,16 +16,52 @@ saved $0.647 (90%)  │  144,000 tokens (120,000p + 24,000c)
 ────────────────────────────────
 ```
 
+## Why not just spawn a subagent?
+
+The usual pattern for heavy tasks — spawning a Claude subagent via the Agent tool — starts a brand new conversation context. That means re-paying the full context window, losing your current state, and still billing at Claude rates.
+
+This MCP server stays **in your current session**. Claude calls `deepseek(...)` as a regular tool call: no new context, no re-initialization, no spawn overhead. DeepSeek handles the heavy compute at ~$0.44/M tokens instead of ~$3/M.
+
+The server itself also needs no manual launch. Claude Code starts it automatically via `npx` when the tool is first called. You configure it once and forget it.
+
+## What makes `files[]` different
+
+When Claude reads files and pastes them into a prompt, those bytes load into **Claude's** context window first — you pay Claude's rate just to pass content through.
+
+With `files[]`, Claude passes only the paths. The MCP server reads the bytes directly from disk and forwards them to DeepSeek. Large codebases go straight to DeepSeek without ever touching Claude's context.
+
+```jsonc
+// Claude calls the tool like this — no Read calls needed first:
+deepseek({
+  prompt: "Audit these files for security vulnerabilities...",
+  files: [
+    "/path/to/auth.py",
+    "/path/to/middleware.py",
+    "/path/to/payments.py"
+  ]
+})
+```
+
 ## Install
 
 ```bash
 npm install -g claude-code-deepseek-delegator
 ```
 
-Or run directly without installing:
+Or skip the install entirely — Claude Code will fetch and run it on demand:
 
-```bash
-npx claude-code-deepseek-delegator
+```json
+{
+  "mcpServers": {
+    "deepseek": {
+      "command": "npx",
+      "args": ["claude-code-deepseek-delegator"],
+      "env": {
+        "DEEPSEEK_API_KEY": "sk-your-key-here"
+      }
+    }
+  }
+}
 ```
 
 Zero dependencies — Node.js 20+ built-ins only.
@@ -76,25 +112,11 @@ Delegate a task to DeepSeek.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `prompt` | string | *required* | The task/instructions for DeepSeek |
-| `files` | string[] | — | Absolute file paths to read and include. **The MCP server reads them — file contents never pass through Claude's context window.** Use this instead of embedding file content in `prompt`. |
+| `files` | string[] | — | Absolute file paths to read and include. The MCP server reads them — file contents never pass through Claude's context window. |
 | `system` | string | — | Optional system prompt |
 | `model` | string | `deepseek-v4-pro` | Model ID |
-| `temperature` | number | `0.7` | 0-2, lower = deterministic |
+| `temperature` | number | `0.7` | 0–2, lower = deterministic |
 | `maxTokens` | number | model max | Response token cap |
-
-**Using `files[]` is the key to saving tokens.** When Claude reads files and pastes them into `prompt`, those bytes load into Claude's context window first. With `files[]`, Claude passes only paths — the MCP process reads the bytes directly and forwards them to DeepSeek. Large codebases go to DeepSeek without ever touching Claude's context.
-
-```jsonc
-// Claude calls the tool like this — no file reading needed first:
-deepseek({
-  prompt: "Audit these files for security vulnerabilities...",
-  files: [
-    "/path/to/auth.py",
-    "/path/to/middleware.py",
-    "/path/to/payments.py"
-  ]
-})
-```
 
 ### `deepseek_models`
 
@@ -110,7 +132,9 @@ List available models with capabilities, context windows, and thinking support.
 
 ## Features
 
-- **Cost comparison** — every response shows DeepSeek cost vs Claude Sonnet 4 equivalent, with \$ saved and percentage
+- **No spawn** — direct tool call, stays in current session, no subagent overhead
+- **Files bypass Claude** — `files[]` routes disk reads through the MCP process, not Claude's context
+- **Cost comparison** — every response shows DeepSeek cost vs Claude Sonnet 4 equivalent, with $ saved and percentage
 - **Mandatory delegation gate** — Claude can't skip the y/n prompt for heavy tasks
 - **Retry with backoff** — auto-retries on 429/5xx with exponential backoff (configurable attempts)
 - **Configurable timeout** — default 120s, set via `DEEPSEEK_TIMEOUT`
