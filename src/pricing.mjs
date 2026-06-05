@@ -41,9 +41,9 @@ export function buildFooter(result, model) {
   const dsCostStr = formatCost(dsCost);
   const claudeCostStr = formatCost(claudeCost);
   const savedStr = formatCost(saved);
-  const totalStr = usage.totalTokens.toLocaleString();
-  const promptStr = usage.promptTokens.toLocaleString();
-  const completionStr = usage.completionTokens.toLocaleString();
+  const totalStr = (usage.totalTokens ?? 0).toLocaleString();
+  const promptStr = (usage.promptTokens ?? 0).toLocaleString();
+  const completionStr = (usage.completionTokens ?? 0).toLocaleString();
 
   const lines = [
     '',

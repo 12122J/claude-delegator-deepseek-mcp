@@ -89,8 +89,13 @@ function parseSSEStream(res) {
       }
     });
 
+    let settled = false;
+    const settle = (fn, val) => {
+      if (!settled) { settled = true; fn(val); }
+    };
+
     res.on('end', () => {
-      resolve({
+      settle(resolve, {
         streamed: true,
         content: chunks,
         model,
@@ -99,7 +104,10 @@ function parseSSEStream(res) {
       });
     });
 
-    res.on('error', reject);
+    res.on('error', (err) => settle(reject, err));
+
+    // Network reset without 'end' — promise would hang forever without this
+    res.on('close', () => settle(reject, new Error('Stream closed prematurely')));
   });
 }
 
@@ -169,6 +177,7 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
             if (res.statusCode >= 400) {
               let data = '';
               res.on('data', (chunk) => (data += chunk));
+              res.on('error', (err) => reject(new DeepSeekError(err.message, 0)));
               res.on('end', () => {
                 try {
                   const json = JSON.parse(data);
@@ -218,6 +227,7 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
         (res) => {
           let data = '';
           res.on('data', (chunk) => (data += chunk));
+          res.on('error', (err) => reject(new DeepSeekError(err.message, 0)));
           res.on('end', () => {
             if (res.statusCode >= 400) {
               return reject(new DeepSeekError(

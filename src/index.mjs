@@ -8,7 +8,7 @@ import { getDefaultModel } from './models.mjs';
 
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_NAME = 'claude-code-deepseek-delegator';
-const SERVER_VERSION = '2.4.1';
+const SERVER_VERSION = '2.4.2';
 
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB — MCP messages should never exceed a few KB
 let buffer = '';
@@ -26,12 +26,13 @@ function respond(id, result) {
 }
 
 function error(id, code, message) {
-  send({ jsonrpc: '2.0', id, error: { code, message } });
+  send({ jsonrpc: '2.0', id, error: { code, message: message ?? 'Internal error' } });
 }
 
 async function handle(method, id, params) {
   switch (method) {
     case 'initialize':
+      if (initialized) return error(id, -32000, 'Already initialized');
       initialized = true;
       return respond(id, {
         protocolVersion: PROTOCOL_VERSION,
@@ -88,9 +89,10 @@ export function parseFrames(input, onMessage) {
       continue;
     }
     if (clMatches.length > 1) {
-      // Malformed: multiple Content-Length headers — discard frame
-      buf = buf.slice(headerEnd + 4);
-      continue;
+      // Malformed: multiple Content-Length headers — cannot determine body boundary,
+      // clear the entire buffer to avoid cascading protocol desync.
+      buf = '';
+      break;
     }
 
     const contentLengthMatch = header.match(/^Content-Length:\s*(\d+)/im);

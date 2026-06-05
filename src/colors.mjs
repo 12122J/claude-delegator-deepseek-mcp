@@ -1,7 +1,9 @@
 // ANSI color helpers — Claude Code CLI aesthetic (Tokyo Night palette)
-// Respects NO_COLOR env var and non-TTY stdout (fixes #4)
+// Respects NO_COLOR / FORCE_COLOR. Does NOT check isTTY — MCP servers run as
+// child processes with piped stdio, so isTTY is always false even when the
+// parent terminal supports color. Color rendering is the client's responsibility.
 
-const noColor = process.env.NO_COLOR || !process.stdout.isTTY;
+const noColor = process.env.NO_COLOR != null || process.env.FORCE_COLOR === '0';
 
 const ansiCodes = {
   reset: '\x1b[0m',

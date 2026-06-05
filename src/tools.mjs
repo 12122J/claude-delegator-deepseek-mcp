@@ -78,7 +78,9 @@ export async function handleToolCall(name, args) {
       if (filePaths.length > 0) {
         const modelInfo = MODELS[model] || MODELS[getDefaultModel()];
         // Rough guard: ~3 chars per token; leave half the context for output + prompt
-        const maxFileBytes = Math.floor((modelInfo.contextWindow / 2) * 3);
+        const contextWindow = (typeof modelInfo?.contextWindow === 'number' && modelInfo.contextWindow > 0)
+          ? modelInfo.contextWindow : 128_000;
+        const maxFileBytes = Math.floor((contextWindow / 2) * 3);
         let totalBytes = 0;
 
         const sections = await Promise.all(
