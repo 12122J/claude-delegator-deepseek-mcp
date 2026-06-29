@@ -21,43 +21,39 @@ export const MARKER = 'claude-code-deepseek-delegator';
 export const BLOCK_BEGIN = '<!-- >>> claude-code-deepseek-delegator >>> (managed block, do not edit by hand) -->';
 export const BLOCK_END = '<!-- <<< claude-code-deepseek-delegator <<< -->';
 
-// The MCP tool's auto-delegation rules. This is the body inserted between the
-// sentinels in the user's CLAUDE.md. Kept in sync with DELEGATION.md.
-export const MANAGED_RULES = `## DeepSeek Delegation (auto-installed by ${PKG_NAME})
+// The rules inserted between the sentinels in the user's CLAUDE.md. Written to
+// be readable and honest: anyone opening their CLAUDE.md can see what it is, who
+// added it, and how to remove it. Carries the knowledge-transfer instruction
+// (files[] + synthesize) so delegation actually hands off context cleanly.
+export const MANAGED_RULES = `## Delegate heavy work to DeepSeek
 
-**Estimate scope FIRST — before invoking any skill, writing any code, or reading any files.** The gate fires on intent, not on output.
+_Added by \`${PKG_NAME} init\`. Safe to delete this whole block, or run \`npx ${PKG_NAME} uninstall\`._
 
-Before ANY of the following, you MUST stop and ask: **"Delegate to DeepSeek? (y/n)"**
+Before doing any of the following, STOP and ask the user, in these exact words: **"Delegate to DeepSeek? (y/n)"**
 
-- Invoking a skill whose resulting work would exceed the thresholds below
-- Read/analyze/grep files > 300 lines total
-- Write/edit/create > 200 lines of code
-- Generate specs, docs, plans, or architecture > 500 words
-- Multi-file codebase review (3+ files)
-- Web fetch with > 5,000 chars response
-- Complex reasoning (math, logic, multi-step deduction)
-- Any task where your response would exceed ~4k tokens
+- reading or grepping more than ~300 lines total
+- writing or editing more than ~200 lines of code
+- producing more than ~500 words of docs, specs, or plans
+- reviewing 3+ files at once, or any task whose answer would exceed ~4k tokens
+- heavy reasoning (math, multi-step logic)
 
-**Format:** print the scope estimate, then ask. Example:
+Print a one-line scope estimate first, then the question. Example:
 \`\`\`
-> This task analyzes ~800 lines across 4 files.
+> This analyzes ~800 lines across 4 files.
 > Delegate to DeepSeek? (y/n)
 \`\`\`
 
-**If y/yes:** call the \`deepseek\` tool with model \`deepseek-v4-pro\`. Pass file paths via \`files[]\` so bytes never enter Claude's context. Synthesize the result, do not echo it verbatim.
-
-**If n/no:** proceed yourself.
-
-**Never skip the prompt.** Use \`deepseek-v4-flash\` only for quick summaries where speed beats depth.`;
+- If the user says **y**: call the \`deepseek\` tool (model \`deepseek-v4-pro\`). Pass file paths in \`files[]\` so the bytes go straight to DeepSeek and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.
+- If the user says **n**: do it yourself.`;
 
 // The PreToolUse hooks (deterministic enforcement). Written as `node -e` one-
 // liners so they need NO extra tooling: Node is already present (Claude Code
 // runs on it), unlike `jq`, which macOS does not ship. The shell wraps the
 // script in single quotes, so the script itself uses only double quotes.
 // Tagged with _managedBy so uninstall removes exactly these.
-const READ_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),f=i.tool_input&&i.tool_input.file_path;if(!f)return;const fs=require("fs");if(!fs.existsSync(f))return;const n=fs.readFileSync(f,"utf8").split("\\n").length;if(n>300){process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"READ BLOCKED: "+f+" is "+n+" lines. Do NOT read this file into context. Estimate scope and ask the user: Delegate to DeepSeek? (y/n). If yes, pass the path via files[] to deepseek() so the bytes never enter Claude context."}}))}}catch(e){}})'`;
+const READ_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),f=i.tool_input&&i.tool_input.file_path;if(!f)return;const fs=require("fs");if(!fs.existsSync(f))return;const n=fs.readFileSync(f,"utf8").split("\\n").length;if(n>300){process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: "+f+" is "+n+" lines — large enough to crowd Claude context. Before reading it, ask the user exactly: \\"Delegate to DeepSeek? (y/n)\\". If yes, pass the path in files[] to the deepseek tool so the bytes go straight to DeepSeek instead of being read into context."}}))}}catch(e){}})'`;
 
-const SKILL_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"DEEPSEEK GATE - skill: "+k+". Estimate total token cost BEFORE loading this skill. If the resulting work is >200 lines of code, >3 files, >4k tokens of output, or analysis of large content - STOP and ask the user: Delegate to DeepSeek? (y/n). This is mandatory."}}))}catch(e){}})'`;
+const SKILL_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: about to load skill \\""+k+"\\". If the resulting work is large (>200 lines of code, >3 files, >4k tokens of output, or heavy analysis), first ask the user exactly: \\"Delegate to DeepSeek? (y/n)\\" before proceeding."}}))}catch(e){}})'`;
 
 export function managedHooks() {
   return [
@@ -157,8 +153,7 @@ function isOurs(entry) {
   if (entry && entry._managedBy === MARKER) return true;
   // Defensive fallback: identify by our signature even if the tag was stripped.
   const cmds = (entry?.hooks || []).map((h) => h?.command || '').join('\n');
-  return cmds.includes('Delegate to DeepSeek?') &&
-    (cmds.includes('READ BLOCKED') || cmds.includes('DEEPSEEK GATE'));
+  return cmds.includes('Delegate to DeepSeek? (y/n)') && cmds.includes('node -e');
 }
 
 // Ensure settings contains exactly our managed PreToolUse hooks (idempotent),

@@ -29,8 +29,8 @@ test('Read hook fires the gate on a file over 300 lines', () => {
   const { out } = fire(readHook, { tool_input: { file_path: fileWith(450) } });
   ok(out.length > 0, 'hook produced output');
   const parsed = JSON.parse(out);
-  ok(parsed.hookSpecificOutput.additionalContext.includes('READ BLOCKED'));
-  ok(parsed.hookSpecificOutput.additionalContext.includes('Delegate to DeepSeek?'));
+  ok(parsed.hookSpecificOutput.additionalContext.includes('Delegate to DeepSeek? (y/n)'));
+  ok(parsed.hookSpecificOutput.additionalContext.includes('files[]'), 'tells Claude how to hand off');
   equal(parsed.hookSpecificOutput.hookEventName, 'PreToolUse');
 });
 
@@ -47,9 +47,8 @@ test('Read hook is silent when there is no file_path', () => {
 test('Skill hook fires the gate and names the skill', () => {
   const { out } = fire(skillHook, { tool_input: { skill: 'seo-audit' } });
   const parsed = JSON.parse(out);
-  ok(parsed.hookSpecificOutput.additionalContext.includes('DEEPSEEK GATE'));
-  ok(parsed.hookSpecificOutput.additionalContext.includes('seo-audit'));
-  ok(parsed.hookSpecificOutput.additionalContext.includes('Delegate to DeepSeek?'));
+  ok(parsed.hookSpecificOutput.additionalContext.includes('seo-audit'), 'names the skill');
+  ok(parsed.hookSpecificOutput.additionalContext.includes('Delegate to DeepSeek? (y/n)'));
 });
 
 test('hooks never crash on malformed stdin', () => {

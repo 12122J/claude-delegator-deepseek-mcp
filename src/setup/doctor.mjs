@@ -63,11 +63,11 @@ export async function runDoctor() {
     const skill = installedHooks.find((e) => e.matcher === 'Skill');
     if (read) {
       const out = fireHook(read.hooks[0].command, JSON.stringify({ tool_input: { file_path: bigFile(301) } }));
-      add(out.includes('READ BLOCKED'), 'Read gate FIRES on a >300-line file (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
+      add(out.includes('Delegate to DeepSeek? (y/n)'), 'Read gate FIRES on a >300-line file (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
     }
     if (skill) {
       const out = fireHook(skill.hooks[0].command, JSON.stringify({ tool_input: { skill: 'demo' } }));
-      add(out.includes('DEEPSEEK GATE'), 'Skill gate FIRES on skill load (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
+      add(out.includes('Delegate to DeepSeek? (y/n)'), 'Skill gate FIRES on skill load (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
     }
   }
 

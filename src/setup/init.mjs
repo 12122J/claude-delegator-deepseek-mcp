@@ -12,6 +12,7 @@ import { createInterface } from 'node:readline';
 import {
   paths, backupFile, atomicWrite, readJsonSafe,
   upsertBlock, addHooks, mcpEntry,
+  MANAGED_RULES, BLOCK_BEGIN, BLOCK_END,
 } from './wiring.mjs';
 
 const PLACEHOLDER_KEY = 'sk-REPLACE_WITH_YOUR_DEEPSEEK_KEY';
@@ -75,6 +76,41 @@ export async function runInit(argv = []) {
   const backups = [];
 
   console.log(`\nclaude-code-deepseek-delegator · init${dryRun ? '  (dry run — no files will be written)' : ''}\n`);
+
+  // ── Full disclosure: show EXACTLY what will be added, then ask. Nothing is
+  //    written before this point. The user sees every change up front. ──
+  console.log('This will make the following changes to your Claude Code config:\n');
+  console.log(`  1. ${p.claudeMd}`);
+  console.log('     Append this block (your existing file is kept; nothing is overwritten):');
+  console.log('     ┌─────────────────────────────────────────────────────────────');
+  for (const line of `${BLOCK_BEGIN}\n${MANAGED_RULES}\n${BLOCK_END}`.split('\n')) {
+    console.log(`     │ ${line}`);
+  }
+  console.log('     └─────────────────────────────────────────────────────────────\n');
+  console.log(`  2. ${p.settingsJson}`);
+  if (noHooks) {
+    console.log('     (skipped — you passed --no-hooks)\n');
+  } else {
+    console.log('     Add two PreToolUse hooks that nudge "Delegate to DeepSeek? (y/n)"');
+    console.log('     before large file reads and skill loads. They only ever ADD context —');
+    console.log('     they never block, delete, or modify your tool calls. Plain `node`, no jq.\n');
+  }
+  console.log('  3. Register an MCP server named "deepseek" (command: npx -y claude-code-deepseek-delegator)\n');
+  console.log('Everything is reversible with:  npx claude-code-deepseek-delegator uninstall');
+  console.log('A timestamped backup is written before any file is changed.\n');
+
+  if (!dryRun && !assumeYes) {
+    if (!process.stdin.isTTY) {
+      console.log('Not an interactive terminal. Re-run with --yes to apply, or --dry-run to preview only.\n');
+      return 1;
+    }
+    const answer = (await ask('Apply these changes? (y/N): ')).toLowerCase();
+    if (answer !== 'y' && answer !== 'yes') {
+      console.log('\nCancelled. Nothing was changed.\n');
+      return 1;
+    }
+    console.log('');
+  }
 
   // 1) API key
   const key = await resolveApiKey({ assumeYes });
