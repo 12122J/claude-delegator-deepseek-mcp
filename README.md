@@ -55,7 +55,7 @@ Or skip the install entirely — Claude Code will fetch and run it on demand:
   "mcpServers": {
     "deepseek": {
       "command": "npx",
-      "args": ["claude-code-deepseek-delegator"],
+      "args": ["-y", "claude-code-deepseek-delegator"],
       "env": {
         "DEEPSEEK_API_KEY": "sk-your-key-here"
       }
@@ -77,7 +77,7 @@ Add to `~/.claude/mcp.json`:
   "mcpServers": {
     "deepseek": {
       "command": "npx",
-      "args": ["claude-code-deepseek-delegator"],
+      "args": ["-y", "claude-code-deepseek-delegator"],
       "env": {
         "DEEPSEEK_API_KEY": "sk-your-key-here"
       }
@@ -86,7 +86,13 @@ Add to `~/.claude/mcp.json`:
 }
 ```
 
-Paste your API key directly into the `env` block. Claude Code does not expand shell variables in `mcp.json` — the value must be the literal key string.
+For the key, you can either paste it literally, or reference an environment variable — Claude Code expands `${VAR}` inside the `env` block:
+
+```json
+"env": { "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}" }
+```
+
+Referencing the variable keeps your key out of the config file, which is safer if you ever commit or share it. Either way works.
 
 Restart Claude Code. The `deepseek` tool is now available.
 
@@ -115,8 +121,9 @@ Delegate a task to DeepSeek.
 | `files` | string[] | — | Absolute file paths to read and include. The MCP server reads them — file contents never pass through Claude's context window. |
 | `system` | string | — | Optional system prompt |
 | `model` | string | `deepseek-v4-pro` | Model ID |
-| `temperature` | number | `0.7` | 0–2, lower = deterministic |
+| `temperature` | number | `0.3` | 0–2, lower = deterministic |
 | `maxTokens` | number | model max | Response token cap |
+| `stream` | boolean | `false` | Stream the response in chunks instead of buffering. Recommended for very large outputs. |
 
 ### `deepseek_models`
 
