@@ -14,7 +14,7 @@ const SERVER_VERSION = '2.4.2';
 // CLI subcommands. With NO subcommand — which is exactly how Claude Code spawns
 // this binary — we skip all of this and fall through to the MCP server below.
 const SUBCOMMAND = process.argv[2];
-if (['init', 'setup', 'uninstall', 'remove', 'help', '--help', '-h', '--version', '-v'].includes(SUBCOMMAND)) {
+if (['init', 'setup', 'uninstall', 'remove', 'doctor', 'help', '--help', '-h', '--version', '-v'].includes(SUBCOMMAND)) {
   process.exit(await runCli(SUBCOMMAND, process.argv.slice(3)));
 }
 
@@ -144,6 +144,10 @@ async function runCli(sub, args) {
     const { runUninstall } = await import('./setup/uninstall.mjs');
     return runUninstall(args);
   }
+  if (sub === 'doctor') {
+    const { runDoctor } = await import('./setup/doctor.mjs');
+    return runDoctor();
+  }
   if (sub === '--version' || sub === '-v') {
     console.log(SERVER_VERSION);
     return 0;
@@ -162,6 +166,7 @@ Usage:
 Commands:
   (no command)   Run the MCP server (this is how Claude Code launches it)
   init           Fully wire into Claude Code: MCP server + CLAUDE.md rules + hooks
+  doctor         Verify the install and live-fire the gate hooks
   uninstall      Cleanly remove everything init added
   help           Show this help
   --version      Print version
