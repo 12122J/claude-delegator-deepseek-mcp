@@ -3,13 +3,16 @@
 // Zero dependencies — Node.js 20+ built-ins only.
 // JSON-RPC 2.0 over stdio with Content-Length framing (MCP spec compliant).
 
+import { createRequire } from 'node:module';
 import { handleToolCall, TOOLS } from './tools.mjs';
 import { getDefaultModel } from './models.mjs';
 import { parseFrames } from './framing.mjs';
 
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_NAME = 'claude-code-deepseek-delegator';
-const SERVER_VERSION = '2.4.2';
+// Single source of truth: read the version from package.json so it can never
+// drift from what npm published.
+const SERVER_VERSION = createRequire(import.meta.url)('../package.json').version;
 
 // CLI subcommands. With NO subcommand — which is exactly how Claude Code spawns
 // this binary — we skip all of this and fall through to the MCP server below.
