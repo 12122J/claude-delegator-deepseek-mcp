@@ -1,55 +1,43 @@
-// Content-Length framed JSON-RPC reader (MCP stdio transport).
+// MCP stdio transport framing: newline-delimited JSON-RPC.
 //
-// Pure, side-effect-free: this module is safe to import from tests without
-// booting the server. index.mjs imports parseFrames from here.
+// Per the MCP spec, stdio messages are "delimited by newlines, and MUST NOT
+// contain embedded newlines." Each line on stdin is one complete JSON-RPC
+// message; each message we send is one JSON object followed by '\n'.
+//
+// (Earlier versions used LSP-style Content-Length framing, which MCP stdio does
+// NOT use — that is why clients reported "failed to connect".)
+//
+// Pure and side-effect-free so it can be unit-tested without booting the server.
 
 /**
- * Parse as many complete Content-Length framed messages as are available in
- * `input`. Calls `onMessage(parsedJson)` for each valid frame and returns the
- * list of consumed raw bodies plus the unparsed remainder (a partial frame
- * still waiting for more bytes).
+ * Parse every complete newline-delimited JSON message available in `input`.
+ * Calls `onMessage(parsedJson)` for each, and returns the raw message strings
+ * consumed plus the remainder (a partial final line awaiting more bytes).
+ *
+ * Tolerates CRLF line endings and skips blank or non-JSON lines rather than
+ * desyncing the stream.
  */
-export function parseFrames(input, onMessage) {
+export function parseLines(input, onMessage) {
   let buf = input;
   const consumed = [];
 
-  while (true) {
-    const headerEnd = buf.indexOf('\r\n\r\n');
-    if (headerEnd === -1) break;
+  let nl;
+  while ((nl = buf.indexOf('\n')) !== -1) {
+    let line = buf.slice(0, nl);
+    buf = buf.slice(nl + 1);
 
-    const header = buf.slice(0, headerEnd);
-    // Reject frames with duplicate Content-Length headers (RFC 9112 §6.5.7)
-    const clMatches = header.match(/^Content-Length:\s*(\d+)/gim);
-    if (!clMatches) {
-      // No Content-Length header — discard this header block as malformed.
-      buf = buf.slice(headerEnd + 4);
-      continue;
-    }
-    if (clMatches.length > 1) {
-      // Malformed: multiple Content-Length headers — we can't trust the body
-      // boundary, so drop only this header block and keep going. Clearing the
-      // whole buffer would also discard valid frames already queued behind it
-      // (protocol desync). Same recovery as the no-Content-Length case above.
-      buf = buf.slice(headerEnd + 4);
-      continue;
-    }
-
-    const contentLengthMatch = header.match(/^Content-Length:\s*(\d+)/im);
-    const contentLength = parseInt(contentLengthMatch[1], 10);
-    const bodyStart = headerEnd + 4;
-    if (buf.length < bodyStart + contentLength) break;
-
-    const body = buf.slice(bodyStart, bodyStart + contentLength);
-    buf = buf.slice(bodyStart + contentLength);
+    if (line.endsWith('\r')) line = line.slice(0, -1); // tolerate CRLF
+    const trimmed = line.trim();
+    if (!trimmed) continue; // ignore blank lines
 
     let msg;
     try {
-      msg = JSON.parse(body);
+      msg = JSON.parse(trimmed);
     } catch {
-      continue;
+      continue; // ignore non-JSON lines instead of breaking the stream
     }
 
-    consumed.push(body);
+    consumed.push(trimmed);
     if (onMessage) onMessage(msg);
   }
 

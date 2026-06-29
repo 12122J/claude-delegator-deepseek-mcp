@@ -6,7 +6,7 @@
 import { createRequire } from 'node:module';
 import { handleToolCall, TOOLS } from './tools.mjs';
 import { getDefaultModel } from './models.mjs';
-import { parseFrames } from './framing.mjs';
+import { parseLines } from './framing.mjs';
 
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_NAME = 'claude-code-deepseek-delegator';
@@ -28,8 +28,8 @@ let shuttingDown = false;
 const inFlightRequests = new Set();
 
 function send(msg) {
-  const payload = JSON.stringify(msg);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(payload)}\r\n\r\n${payload}`);
+  // Newline-delimited JSON, per the MCP stdio transport spec.
+  process.stdout.write(JSON.stringify(msg) + '\n');
 }
 
 function respond(id, result) {
@@ -87,7 +87,7 @@ process.stdin.on('data', (chunk) => {
     process.stderr.write(`WARNING: buffer exceeded ${MAX_BUFFER_SIZE} bytes — flushing to prevent memory exhaustion\n`);
     buffer = '';
   }
-  const { remainder } = parseFrames(buffer, (msg) => {
+  const { remainder } = parseLines(buffer, (msg) => {
     const promise = handle(msg.method, msg.id, msg.params || {}).catch((err) => {
       if (msg.id !== undefined) error(msg.id, -32603, err.message);
     });

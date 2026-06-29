@@ -24,8 +24,7 @@ function createConnection() {
     const id = hasId ? ++idCounter : undefined;
     const msg = { jsonrpc: '2.0', method, params };
     if (hasId) msg.id = id;
-    const payload = JSON.stringify(msg);
-    const frame = `Content-Length: ${Buffer.byteLength(payload)}\r\n\r\n${payload}`;
+    const frame = JSON.stringify(msg) + '\n'; // newline-delimited (MCP stdio)
 
     return new Promise((resolve, reject) => {
       if (hasId) pending.set(id, resolve);
@@ -44,31 +43,21 @@ function createConnection() {
     });
   }
 
-  let accumulator = Buffer.alloc(0);
+  let accumulator = '';
 
   function handler(data) {
-    accumulator = Buffer.concat([accumulator, data]);
+    accumulator += data.toString('utf8');
 
-    // Loop across all complete frames in the accumulated buffer
-    while (true) {
-      const str = accumulator.toString('latin1');
-      const idx = str.indexOf('\r\n\r\n');
-      if (idx === -1) break;
-
-      const header = str.slice(0, idx);
-      const m = header.match(/Content-Length:\s*(\d+)/i);
-      if (!m) { accumulator = accumulator.slice(idx + 4); continue; }
-
-      const contentLen = parseInt(m[1], 10);
-      const bodyStart = idx + 4;
-      if (accumulator.length < bodyStart + contentLen) break;
-
-      const body = accumulator.slice(bodyStart, bodyStart + contentLen).toString('utf8');
-      accumulator = accumulator.slice(bodyStart + contentLen);
+    // Newline-delimited JSON: process each complete line.
+    let nl;
+    while ((nl = accumulator.indexOf('\n')) !== -1) {
+      const line = accumulator.slice(0, nl).trim();
+      accumulator = accumulator.slice(nl + 1);
+      if (!line) continue;
 
       let msg;
       try {
-        msg = JSON.parse(body);
+        msg = JSON.parse(line);
       } catch {
         continue;
       }
