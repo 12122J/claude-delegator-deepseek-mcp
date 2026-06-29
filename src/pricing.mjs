@@ -5,12 +5,10 @@ import { color, bold, dim } from './colors.mjs';
 
 export const PRICING = {
   'deepseek-v4-pro': { input: 0.435, output: 0.87 },
-  'deepseek-v4-flash': { input: 0.14, output: 0.28 },
-  'deepseek-reasoner': { input: 0.55, output: 2.19 },
 };
 
-// Claude comparison baseline (Sonnet 4)
-export const CLAUDE_PRICING = { input: 3.00, output: 15.00 };
+// Claude comparison baseline (Opus 4.8)
+export const CLAUDE_PRICING = { input: 5.00, output: 25.00 };
 
 export function calculateCost(inputTokens, outputTokens, pricing) {
   return (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
@@ -48,7 +46,7 @@ export function buildFooter(result, model) {
   const lines = [
     '',
     dim('─── claude-code-deepseek-delegator · cost ───'),
-    `${color('green', 'deepseek')} ${dim(modelStr)} ${dim(dsCostStr)}  │  ${color('yellow', 'claude sonnet 4')} ${dim(claudeCostStr)}`,
+    `${color('green', 'deepseek')} ${dim(modelStr)} ${dim(dsCostStr)}  │  ${color('yellow', 'claude opus 4.8')} ${dim(claudeCostStr)}`,
     `${color('green', 'saved')} ${bold(savedStr)} ${color('green', '(' + pct + '%)')}  │  ${dim(totalStr + ' tokens')} ${dim('(' + promptStr + 'p + ' + completionStr + 'c)')}`,
     dim('────────────────────────────────'),
   ];

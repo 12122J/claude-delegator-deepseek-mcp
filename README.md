@@ -2,7 +2,7 @@
 
 **Cut your Claude Code bill by offloading heavy, token-hungry work to DeepSeek — without leaving your session.**
 
-Claude orchestrates, DeepSeek does the grunt work (big file audits, long generations, deep reasoning) at roughly **1/7th the price**. One tool call, no subagent spawn, no daemon, zero dependencies.
+Claude orchestrates, DeepSeek does the grunt work (big file audits, long generations, deep reasoning) at roughly **1/16th the price**. One tool call, no subagent spawn, no daemon, zero dependencies.
 
 <p>
   <a href="https://www.npmjs.com/package/claude-code-deepseek-delegator"><img alt="npm" src="https://img.shields.io/npm/v/claude-code-deepseek-delegator?color=cb3837&logo=npm"></a>
@@ -21,8 +21,8 @@ Claude orchestrates, DeepSeek does the grunt work (big file audits, long generat
 [... full response ...]
 
 ─── claude-code-deepseek-delegator · cost ───
-deepseek v4-pro $0.073  │  claude sonnet 4 $0.720
-saved $0.647 (90%)  │  144,000 tokens (120,000p + 24,000c)
+deepseek v4-pro $0.073  │  claude opus 4.8 $1.20
+saved $1.13 (94%)  │  144,000 tokens (120,000p + 24,000c)
 ────────────────────────────────
 ```
 
@@ -44,7 +44,7 @@ npx claude-code-deepseek-delegator doctor
 
 `doctor` doesn't just check that files exist — it **actually fires the gate hooks** and confirms the delegation prompt is live.
 
-Get a DeepSeek API key (free credits on signup) at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). Set it once:
+Get a DeepSeek API key at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). Set it once:
 
 ```bash
 export DEEPSEEK_API_KEY=sk-your-key-here   # add to ~/.zshrc or ~/.bashrc
@@ -92,7 +92,7 @@ This gives you the `deepseek` tool, but **not** the automatic "Delegate? (y/n)" 
 
 The usual pattern for heavy work — spawning a Claude subagent — starts a **brand new context window**: you re-pay the full context, lose your current state, and still bill at Claude rates.
 
-This MCP server stays **in your current session**. Claude calls `deepseek(...)` like any tool — no new context, no re-init, no spawn overhead — and DeepSeek does the heavy compute at ~$0.44/M instead of ~$3/M.
+This MCP server stays **in your current session**. Claude calls `deepseek(...)` like any tool — no new context, no re-init, no spawn overhead — and DeepSeek does the heavy compute at ~$0.44/M instead of ~$5/M.
 
 ## The `files[]` trick (this is the real win)
 
@@ -137,31 +137,25 @@ Two layers make this reliable: the **CLAUDE.md rules** (Claude offers the gate) 
 | `prompt` | string | *required* | The task for DeepSeek. Be specific. |
 | `files` | string[] | — | Absolute paths. The server reads them — bytes never enter Claude's context. |
 | `system` | string | — | Optional system prompt. |
-| `model` | string | `deepseek-v4-pro` | Model ID (see below). |
 | `temperature` | number | `0.3` | 0–2, lower = more deterministic. |
-| `maxTokens` | number | model max | Response token cap. |
 | `stream` | boolean | `false` | Stream chunks instead of buffering. Good for very large outputs. |
+
+Every call runs on `deepseek-v4-pro` with the full 384K output budget — there's no model or token-cap knob to get wrong.
 
 ### `deepseek_models`
 
-Lists available models with capabilities, context windows, and thinking support.
+Shows the model in use with its context window and output limit.
 
-## Models
+## Model
 
-| Model | Context | Thinking | Best for |
-|-------|---------|----------|----------|
-| `deepseek-v4-pro` | 1M | Yes | Complex analysis, architecture, code |
-| `deepseek-v4-flash` | 1M | Optional | Fast / cheap tasks |
-| `deepseek-reasoner` | 64K | Yes | Math, logic, step-by-step |
+`deepseek-v4-pro` is the one and only model — it handles everything. 1M token context window, 384K max output, and every request gets the full output budget.
 
 ## Pricing (per 1M tokens)
 
 | Model | Input | Output |
 |-------|-------|--------|
 | `deepseek-v4-pro` | $0.435 | $0.87 |
-| `deepseek-v4-flash` | $0.14 | $0.28 |
-| `deepseek-reasoner` | $0.55 | $2.19 |
-| *Claude Sonnet 4 (for comparison)* | $3.00 | $15.00 |
+| *Claude Opus 4.8 (for comparison)* | $5.00 | $25.00 |
 
 Every response prints the DeepSeek cost vs. the Claude-equivalent cost, with dollars and percentage saved.
 
