@@ -15,7 +15,8 @@
   "scripts": {
     "start": "node src/index.mjs",
     "dev": "node --watch src/index.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "check": "npm test && npm pack --dry-run"
   },
   "keywords": [
     "mcp",
