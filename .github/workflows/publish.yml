@@ -1,25 +1,27 @@
 name: Publish to npm
 
-# Publishes claude-code-deepseek-delegator to npm using a Trusted Publisher (OIDC).
-# No NPM_TOKEN secret needed: GitHub mints a short-lived identity token, npm
-# verifies it against the trusted publisher you configured, and provenance is
-# attached automatically so the npm page links back to this exact commit.
+# Publishes claude-code-deepseek-delegator to npm via a Trusted Publisher (OIDC).
+# No NPM_TOKEN: GitHub mints a short-lived identity token, npm verifies it against
+# the trusted publisher configured on npmjs, and provenance is attached so the npm
+# page links back to this exact commit.
 #
-# One-push release:
-#   npm version patch        # bumps package.json + package-lock, creates the v* tag
-#   git push --follow-tags   # pushes the commit AND the tag -> this workflow runs
-# Or trigger manually from the Actions tab (workflow_dispatch).
+# DRIFT-PROOF, PUSH-DRIVEN RELEASE:
+#   1. bump "version" in package.json
+#   2. push to main
+# On push, this workflow publishes IFF that version is not already on npm. So the
+# published version always equals package.json, and a push without a version bump
+# is a no-op. No tags to remember, nothing can drift.
 #
-# One-time setup on npmjs.com: package settings -> Trusted Publisher ->
-#   org/user: 12122J, repo: claude-delegator-deepseek-mcp, workflow: publish.yml
+# One-time npmjs setup (Trusted Publisher):
+#   org/user: 12122J · repo: claude-delegator-deepseek-mcp · workflow: publish.yml
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # to push the release tag
   id-token: write # REQUIRED for OIDC trusted publishing + provenance
 
 jobs:
@@ -38,18 +40,21 @@ jobs:
       - name: Upgrade npm (OIDC trusted publishing needs npm >= 11.5.1)
         run: npm install -g npm@latest
 
-      - name: Run checks
+      - name: Run checks (tests + pack dry-run)
         run: npm run check
 
-      - name: Verify tag matches package.json version
+      - name: Publish if this version is new
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PKG="$(node -p "require('./package.json').version")"
-          if [ "$TAG" != "$PKG" ]; then
-            echo "::error::tag v$TAG does not match package.json version $PKG"
-            exit 1
+          PKG="$(node -p "require('./package.json').name")"
+          VER="$(node -p "require('./package.json').version")"
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "$PKG@$VER is already on npm — nothing to publish."
+            exit 0
           fi
-          echo "tag and package.json agree on $PKG"
-
-      - name: Publish
-        run: npm publish --access public
+          echo "Publishing $PKG@$VER ..."
+          npm publish --access public
+          # Tag the release in git for the record (provenance already links the commit)
+          if ! git rev-parse "v$VER" >/dev/null 2>&1; then
+            git tag "v$VER"
+            git push origin "v$VER"
+          fi
