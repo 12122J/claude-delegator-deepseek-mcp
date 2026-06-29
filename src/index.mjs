@@ -116,4 +116,11 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Startup log to stderr (not stdout — MCP uses stdout for JSON-RPC)
+if (!process.env.DEEPSEEK_API_KEY) {
+  process.stderr.write(
+    'WARNING: DEEPSEEK_API_KEY is not set. The server will start, but every ' +
+    'deepseek tool call will fail with a 401 until you add the key to the "env" ' +
+    'block of this server in your MCP config (e.g. ~/.claude/mcp.json).\n'
+  );
+}
 process.stderr.write(`${SERVER_NAME} v${SERVER_VERSION} ready. Default model: ${getDefaultModel()}\n`);
