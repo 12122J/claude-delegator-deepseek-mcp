@@ -11,6 +11,13 @@ const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_NAME = 'claude-code-deepseek-delegator';
 const SERVER_VERSION = '2.4.2';
 
+// CLI subcommands. With NO subcommand — which is exactly how Claude Code spawns
+// this binary — we skip all of this and fall through to the MCP server below.
+const SUBCOMMAND = process.argv[2];
+if (['init', 'setup', 'uninstall', 'remove', 'help', '--help', '-h', '--version', '-v'].includes(SUBCOMMAND)) {
+  process.exit(await runCli(SUBCOMMAND, process.argv.slice(3)));
+}
+
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB — MCP messages should never exceed a few KB
 let buffer = '';
 let initialized = false;
@@ -124,3 +131,44 @@ if (!process.env.DEEPSEEK_API_KEY) {
   );
 }
 process.stderr.write(`${SERVER_NAME} v${SERVER_VERSION} ready. Default model: ${getDefaultModel()}\n`);
+
+// ── CLI handlers (only reached via the SUBCOMMAND branch above) ──
+// Declarations are hoisted, so the early call works. Setup modules are loaded
+// lazily so they never touch the hot server-startup path.
+async function runCli(sub, args) {
+  if (sub === 'init' || sub === 'setup') {
+    const { runInit } = await import('./setup/init.mjs');
+    return runInit(args);
+  }
+  if (sub === 'uninstall' || sub === 'remove') {
+    const { runUninstall } = await import('./setup/uninstall.mjs');
+    return runUninstall(args);
+  }
+  if (sub === '--version' || sub === '-v') {
+    console.log(SERVER_VERSION);
+    return 0;
+  }
+  printHelp();
+  return 0;
+}
+
+function printHelp() {
+  console.log(`
+claude-code-deepseek-delegator — delegate heavy tasks from Claude Code to DeepSeek
+
+Usage:
+  npx claude-code-deepseek-delegator <command>
+
+Commands:
+  (no command)   Run the MCP server (this is how Claude Code launches it)
+  init           Fully wire into Claude Code: MCP server + CLAUDE.md rules + hooks
+  uninstall      Cleanly remove everything init added
+  help           Show this help
+  --version      Print version
+
+init options:
+  --dry-run      Show what would change, write nothing
+  --no-hooks     Skip the settings.json hooks (rules-only, softer gate)
+  --yes, -y      Non-interactive (don't prompt for the API key)
+`);
+}
