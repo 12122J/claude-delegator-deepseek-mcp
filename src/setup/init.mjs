@@ -125,7 +125,7 @@ export async function runInit(argv = []) {
         atomicWrite(p.settingsJson, JSON.stringify(next, null, 2) + '\n');
       }
       console.log(`  ✓ hooks        ${dryRun ? 'would install' : changed ? 'installed' : 'already up to date'} Read + Skill PreToolUse hooks  (${p.settingsJson})`);
-      if (!has('jq')) notes.push('`jq` is NOT installed — the PreToolUse hooks need it. Install jq (e.g. `brew install jq`) or they will silently no-op.');
+      if (!has('node')) notes.push('`node` was not found on PATH — the PreToolUse hooks run via node, so make sure node is on PATH.');
     }
   }
 

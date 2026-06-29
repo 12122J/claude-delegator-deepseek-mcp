@@ -50,11 +50,14 @@ Before ANY of the following, you MUST stop and ask: **"Delegate to DeepSeek? (y/
 
 **Never skip the prompt.** Use \`deepseek-v4-flash\` only for quick summaries where speed beats depth.`;
 
-// The PreToolUse hooks (stronger, non-bypassable enforcement). These require
-// `jq` on PATH. Tagged with _managedBy so uninstall removes exactly these.
-const READ_HOOK_CMD = `jq -r '.tool_input.file_path // empty' | { read -r f; if [ -z "$f" ]; then exit 0; fi; lines=$(wc -l < "$f" 2>/dev/null | tr -d ' '); if [ "$lines" -gt 300 ]; then jq -n --argjson l "$lines" --arg p "$f" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:("READ BLOCKED: "+$p+" is "+($l|tostring)+" lines. Do NOT read this file into context. Estimate scope and ask the user: Delegate to DeepSeek? (y/n). If yes, pass the path via files[] to deepseek() — never load large files into Claude context first.")}}'; fi; }`;
+// The PreToolUse hooks (deterministic enforcement). Written as `node -e` one-
+// liners so they need NO extra tooling: Node is already present (Claude Code
+// runs on it), unlike `jq`, which macOS does not ship. The shell wraps the
+// script in single quotes, so the script itself uses only double quotes.
+// Tagged with _managedBy so uninstall removes exactly these.
+const READ_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),f=i.tool_input&&i.tool_input.file_path;if(!f)return;const fs=require("fs");if(!fs.existsSync(f))return;const n=fs.readFileSync(f,"utf8").split("\\n").length;if(n>300){process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"READ BLOCKED: "+f+" is "+n+" lines. Do NOT read this file into context. Estimate scope and ask the user: Delegate to DeepSeek? (y/n). If yes, pass the path via files[] to deepseek() so the bytes never enter Claude context."}}))}}catch(e){}})'`;
 
-const SKILL_HOOK_CMD = `jq '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: ("DEEPSEEK GATE — skill: " + (.tool_input.skill // "?") + ". Estimate total token cost BEFORE loading this skill. If the resulting work involves >200 lines of code, >3 files, >4k tokens output, or analysis of large content — STOP and ask the user: Delegate to DeepSeek? (y/n). This is mandatory.")}}'`;
+const SKILL_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"DEEPSEEK GATE - skill: "+k+". Estimate total token cost BEFORE loading this skill. If the resulting work is >200 lines of code, >3 files, >4k tokens of output, or analysis of large content - STOP and ask the user: Delegate to DeepSeek? (y/n). This is mandatory."}}))}catch(e){}})'`;
 
 export function managedHooks() {
   return [
@@ -64,16 +67,25 @@ export function managedHooks() {
 }
 
 // ── Paths ────────────────────────────────────────────────────────────────
-// `home` is injectable so tests can run against a temp directory.
-export function paths(home = process.env.CLAUDE_DELEGATOR_HOME || homedir()) {
-  const claudeDir = join(home, '.claude');
+// Resolve Claude Code's config directory, honoring the same overrides Claude
+// Code itself uses, so we never write to the wrong place:
+//   1. CLAUDE_DELEGATOR_HOME — test-only sandbox (treated as a fake $HOME)
+//   2. CLAUDE_CONFIG_DIR     — Claude Code's official config relocation
+//   3. ~/.claude             — the default
+export function claudeDir() {
+  if (process.env.CLAUDE_DELEGATOR_HOME) return join(process.env.CLAUDE_DELEGATOR_HOME, '.claude');
+  if (process.env.CLAUDE_CONFIG_DIR) return process.env.CLAUDE_CONFIG_DIR;
+  return join(homedir(), '.claude');
+}
+
+export function paths() {
+  const dir = claudeDir();
   return {
-    home,
-    claudeDir,
-    claudeMd: join(claudeDir, 'CLAUDE.md'),
-    settingsJson: join(claudeDir, 'settings.json'),
+    claudeDir: dir,
+    claudeMd: join(dir, 'CLAUDE.md'),
+    settingsJson: join(dir, 'settings.json'),
     // file fallback target for MCP config when the `claude` CLI is unavailable
-    legacyMcpJson: join(claudeDir, 'mcp.json'),
+    legacyMcpJson: join(dir, 'mcp.json'),
   };
 }
 
