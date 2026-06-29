@@ -1,8 +1,18 @@
 # Claude Code DeepSeek Delegator
 
-MCP server that lets [Claude Code](https://claude.ai/code) delegate heavy-token tasks to DeepSeek. Claude orchestrates; DeepSeek does the heavy lifting.
+**Cut your Claude Code bill by offloading heavy, token-hungry work to DeepSeek — without leaving your session.**
 
-**One `deepseek` tool. No spawn. No daemon. Zero dependencies.**
+Claude orchestrates, DeepSeek does the grunt work (big file audits, long generations, deep reasoning) at roughly **1/7th the price**. One tool call, no subagent spawn, no daemon, zero dependencies.
+
+<p>
+  <a href="https://www.npmjs.com/package/claude-code-deepseek-delegator"><img alt="npm" src="https://img.shields.io/npm/v/claude-code-deepseek-delegator?color=cb3837&logo=npm"></a>
+  <a href="https://www.npmjs.com/package/claude-code-deepseek-delegator"><img alt="downloads" src="https://img.shields.io/npm/dm/claude-code-deepseek-delegator?color=cb3837"></a>
+  <img alt="zero dependencies" src="https://img.shields.io/badge/dependencies-0-brightgreen">
+  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white">
+  <img alt="license" src="https://img.shields.io/npm/l/claude-code-deepseek-delegator?color=blue">
+</p>
+
+> ⭐ **If this saves you money, please [star the repo](https://github.com/12122J/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
 
 ```console
 ─── claude-code-deepseek-delegator
@@ -16,158 +26,183 @@ saved $0.647 (90%)  │  144,000 tokens (120,000p + 24,000c)
 ────────────────────────────────
 ```
 
-## Why not just spawn a subagent?
+---
 
-The usual pattern for heavy tasks — spawning a Claude subagent via the Agent tool — starts a brand new conversation context. That means re-paying the full context window, losing your current state, and still billing at Claude rates.
+## Install (one command)
 
-This MCP server stays **in your current session**. Claude calls `deepseek(...)` as a regular tool call: no new context, no re-initialization, no spawn overhead. DeepSeek handles the heavy compute at ~$0.44/M tokens instead of ~$3/M.
+```bash
+npx claude-code-deepseek-delegator init
+```
 
-The server itself also needs no manual launch. Claude Code starts it automatically via `npx` when the tool is first called. You configure it once and forget it.
+That's it. `init` wires everything into Claude Code in one shot, and **shows you exactly what it will change and asks before writing anything.** Restart Claude Code and you're done.
 
-## What makes `files[]` different
+Then sanity-check it:
 
-When Claude reads files and pastes them into a prompt, those bytes load into **Claude's** context window first — you pay Claude's rate just to pass content through.
+```bash
+npx claude-code-deepseek-delegator doctor
+```
 
-With `files[]`, Claude passes only the paths. The MCP server reads the bytes directly from disk and forwards them to DeepSeek. Large codebases go straight to DeepSeek without ever touching Claude's context.
+`doctor` doesn't just check that files exist — it **actually fires the gate hooks** and confirms the delegation prompt is live.
+
+Get a DeepSeek API key (free credits on signup) at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). Set it once:
+
+```bash
+export DEEPSEEK_API_KEY=sk-your-key-here   # add to ~/.zshrc or ~/.bashrc
+```
+
+…or just paste it when `init` asks.
+
+### What `init` actually changes (full disclosure)
+
+`init` is explicit and reversible. It will:
+
+1. **Append a clearly-labeled block to `~/.claude/CLAUDE.md`** — the delegation rules. It's fenced with `<!-- >>> ... >>> -->` markers, says who added it and how to remove it, and **never touches anything else in your file.** You see the exact text before it's written.
+2. **Add two `PreToolUse` hooks to `~/.claude/settings.json`** — they inject a "Delegate to DeepSeek? (y/n)" nudge before large file reads and skill loads. They **only add context — they never block, delete, or modify your tool calls.** Plain `node`, no `jq` needed.
+3. **Register an MCP server** named `deepseek` (`npx -y claude-code-deepseek-delegator`).
+
+Before any of that, it writes a timestamped backup of every file it changes. To undo everything:
+
+```bash
+npx claude-code-deepseek-delegator uninstall
+```
+
+`uninstall` removes exactly what `init` added — your own content and unrelated config are left untouched.
+
+### Manual setup (if you prefer)
+
+Add to `~/.claude/mcp.json` yourself:
+
+```json
+{
+  "mcpServers": {
+    "deepseek": {
+      "command": "npx",
+      "args": ["-y", "claude-code-deepseek-delegator"],
+      "env": { "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}" }
+    }
+  }
+}
+```
+
+This gives you the `deepseek` tool, but **not** the automatic "Delegate? (y/n)" gate — that comes from the CLAUDE.md rules and hooks that `init` installs. Claude Code expands `${DEEPSEEK_API_KEY}`, so your key stays out of the file.
+
+---
+
+## Why this instead of spawning a subagent?
+
+The usual pattern for heavy work — spawning a Claude subagent — starts a **brand new context window**: you re-pay the full context, lose your current state, and still bill at Claude rates.
+
+This MCP server stays **in your current session**. Claude calls `deepseek(...)` like any tool — no new context, no re-init, no spawn overhead — and DeepSeek does the heavy compute at ~$0.44/M instead of ~$3/M.
+
+## The `files[]` trick (this is the real win)
+
+When Claude reads files and pastes them into a prompt, those bytes land in **Claude's** context first — you pay Claude's rate just to pass content through.
+
+With `files[]`, Claude passes only the **paths**. The MCP server reads the bytes off disk and forwards them straight to DeepSeek. Large codebases never touch Claude's context.
 
 ```jsonc
-// Claude calls the tool like this — no Read calls needed first:
+// Claude calls the tool like this — no Read calls first:
 deepseek({
-  prompt: "Audit these files for security vulnerabilities...",
-  files: [
-    "/path/to/auth.py",
-    "/path/to/middleware.py",
-    "/path/to/payments.py"
-  ]
+  prompt: "Audit these files for security vulnerabilities and rank by severity.",
+  files: ["/abs/path/auth.py", "/abs/path/middleware.py", "/abs/path/payments.py"]
 })
 ```
 
-## Install
+Claude then **synthesizes** DeepSeek's answer for you instead of pasting it verbatim — so you get the conclusion, cheaply, in the same conversation.
 
-```bash
-npm install -g claude-code-deepseek-delegator
-```
+---
 
-Or skip the install entirely — Claude Code will fetch and run it on demand:
+## How the gate works
 
-```json
-{
-  "mcpServers": {
-    "deepseek": {
-      "command": "npx",
-      "args": ["-y", "claude-code-deepseek-delegator"],
-      "env": {
-        "DEEPSEEK_API_KEY": "sk-your-key-here"
-      }
-    }
-  }
-}
-```
-
-Zero dependencies — Node.js 20+ built-ins only.
-
-Get a free DeepSeek API key at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). They give you credits on signup.
-
-## Configure Claude Code
-
-Add to `~/.claude/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "deepseek": {
-      "command": "npx",
-      "args": ["-y", "claude-code-deepseek-delegator"],
-      "env": {
-        "DEEPSEEK_API_KEY": "sk-your-key-here"
-      }
-    }
-  }
-}
-```
-
-For the key, you can either paste it literally, or reference an environment variable — Claude Code expands `${VAR}` inside the `env` block:
-
-```json
-"env": { "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}" }
-```
-
-Referencing the variable keeps your key out of the config file, which is safer if you ever commit or share it. Either way works.
-
-Restart Claude Code. The `deepseek` tool is now available.
-
-## Automatic delegation
-
-For Claude to automatically suggest delegation before heavy tasks, add the rules from [DELEGATION.md](DELEGATION.md) to your `~/.claude/CLAUDE.md`.
-
-Once added, Claude will ask **"Delegate to DeepSeek? (y/n)"** before any operation that exceeds ~300 lines, 3+ files, or 500+ words of output.
-
-For stronger enforcement, add the PreToolUse hook from [DELEGATION.md](DELEGATION.md) to `~/.claude/settings.json` — it fires before every skill invocation and injects a mandatory scope-check directly into the model context.
+After `init`, heavy operations trigger a prompt:
 
 ```
 > This task analyzes ~800 lines across 4 files.
 > Delegate to DeepSeek? (y/n)
 ```
 
+- **y** → Claude calls `deepseek` (model `deepseek-v4-pro`), passing file paths via `files[]`, then synthesizes the result.
+- **n** → Claude does it itself.
+
+Two layers make this reliable: the **CLAUDE.md rules** (Claude offers the gate) and the **PreToolUse hooks** (a deterministic nudge injected at the moment a big read or skill load happens). Run `doctor` to confirm both are live.
+
+---
+
 ## Tools
 
 ### `deepseek`
 
-Delegate a task to DeepSeek.
-
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `prompt` | string | *required* | The task/instructions for DeepSeek |
-| `files` | string[] | — | Absolute file paths to read and include. The MCP server reads them — file contents never pass through Claude's context window. |
-| `system` | string | — | Optional system prompt |
-| `model` | string | `deepseek-v4-pro` | Model ID |
-| `temperature` | number | `0.3` | 0–2, lower = deterministic |
-| `maxTokens` | number | model max | Response token cap |
-| `stream` | boolean | `false` | Stream the response in chunks instead of buffering. Recommended for very large outputs. |
+| `prompt` | string | *required* | The task for DeepSeek. Be specific. |
+| `files` | string[] | — | Absolute paths. The server reads them — bytes never enter Claude's context. |
+| `system` | string | — | Optional system prompt. |
+| `model` | string | `deepseek-v4-pro` | Model ID (see below). |
+| `temperature` | number | `0.3` | 0–2, lower = more deterministic. |
+| `maxTokens` | number | model max | Response token cap. |
+| `stream` | boolean | `false` | Stream chunks instead of buffering. Good for very large outputs. |
 
 ### `deepseek_models`
 
-List available models with capabilities, context windows, and thinking support.
+Lists available models with capabilities, context windows, and thinking support.
 
 ## Models
 
 | Model | Context | Thinking | Best for |
 |-------|---------|----------|----------|
 | `deepseek-v4-pro` | 1M | Yes | Complex analysis, architecture, code |
-| `deepseek-v4-flash` | 1M | Optional | Fast/cheap tasks |
+| `deepseek-v4-flash` | 1M | Optional | Fast / cheap tasks |
 | `deepseek-reasoner` | 64K | Yes | Math, logic, step-by-step |
 
-## Features
+## Pricing (per 1M tokens)
 
-- **No spawn** — direct tool call, stays in current session, no subagent overhead
-- **Files bypass Claude** — `files[]` routes disk reads through the MCP process, not Claude's context
-- **Cost comparison** — every response shows DeepSeek cost vs Claude Sonnet 4 equivalent, with $ saved and percentage
-- **Mandatory delegation gate** — Claude can't skip the y/n prompt for heavy tasks
-- **Retry with backoff** — auto-retries on 429/5xx with exponential backoff (configurable attempts)
-- **Configurable timeout** — default 120s, set via `DEEPSEEK_TIMEOUT`
-- **Token tracking** — prompt, completion, and total tokens on every response
-- **ANSI colors** — output styled to match Claude Code CLI aesthetic (Tokyo Night palette)
-- **Content-Length framing** — MCP spec-compliant JSON-RPC 2.0 over stdio
+| Model | Input | Output |
+|-------|-------|--------|
+| `deepseek-v4-pro` | $0.435 | $0.87 |
+| `deepseek-v4-flash` | $0.14 | $0.28 |
+| `deepseek-reasoner` | $0.55 | $2.19 |
+| *Claude Sonnet 4 (for comparison)* | $3.00 | $15.00 |
+
+Every response prints the DeepSeek cost vs. the Claude-equivalent cost, with dollars and percentage saved.
+
+---
+
+## CLI reference
+
+```
+npx claude-code-deepseek-delegator <command>
+
+  (no command)   Run the MCP server (how Claude Code launches it)
+  init           Wire into Claude Code: MCP + CLAUDE.md rules + hooks (asks first)
+  doctor         Verify the install and live-fire the gate hooks
+  uninstall      Cleanly remove everything init added
+  help           Show help
+  --version      Print version
+
+  init flags:  --dry-run (preview, write nothing) · --no-hooks · --yes (non-interactive)
+```
 
 ## Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEEPSEEK_API_KEY` | — | **Required.** Your DeepSeek API key |
-| `DEEPSEEK_API_HOST` | `api.deepseek.com` | API hostname |
-| `DEEPSEEK_TIMEOUT` | `120000` | Request timeout in ms |
-| `DEEPSEEK_MAX_RETRIES` | `2` | Max retry attempts on failure |
+| `DEEPSEEK_API_KEY` | — | **Required.** Your DeepSeek API key. |
+| `DEEPSEEK_API_HOST` | `api.deepseek.com` | API hostname. |
+| `DEEPSEEK_TIMEOUT` | `120000` | Request timeout (ms). |
+| `DEEPSEEK_MAX_RETRIES` | `2` | Retry attempts on 429/5xx. |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | Honored by `init`/`doctor`/`uninstall` if you've relocated Claude's config. |
 
-## Pricing
+---
 
-| Model | Input (1M tokens) | Output (1M tokens) |
-|-------|-------------------|---------------------|
-| `deepseek-v4-pro` | $0.435 | $0.87 |
-| `deepseek-v4-flash` | $0.14 | $0.28 |
-| `deepseek-reasoner` | $0.55 | $2.19 |
-| *Claude Sonnet 4 (comparison)* | $3.00 | $15.00 |
+## FAQ
 
-You get free credits on signup at [platform.deepseek.com](https://platform.deepseek.com).
+**Does `npm install` alone enable the gate?** No. Installing only provides the binary. Run `init` (or do the manual MCP setup) to wire it in. The automatic "Delegate? (y/n)" gate needs the CLAUDE.md rules + hooks that `init` adds.
+
+**Will it overwrite my CLAUDE.md?** Never. It appends one fenced block and shows you the exact text first. Everything else is left byte-for-byte.
+
+**How do I remove it?** `npx claude-code-deepseek-delegator uninstall`. Clean and complete.
+
+**Is my key safe?** Use `${DEEPSEEK_API_KEY}` and it's never written to disk. Or paste the literal key if you prefer.
 
 ## License
 
