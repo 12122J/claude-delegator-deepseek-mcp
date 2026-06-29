@@ -5,6 +5,7 @@
 
 import { handleToolCall, TOOLS } from './tools.mjs';
 import { getDefaultModel } from './models.mjs';
+import { parseFrames } from './framing.mjs';
 
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_NAME = 'claude-code-deepseek-delegator';
@@ -68,53 +69,6 @@ async function handle(method, id, params) {
       }
       if (id !== undefined) error(id, -32601, `Method not found: ${method}`);
   }
-}
-
-// Content-Length framed JSON-RPC reader
-// Exported for testing
-export function parseFrames(input, onMessage) {
-  let buf = input;
-  const consumed = [];
-
-  while (true) {
-    const headerEnd = buf.indexOf('\r\n\r\n');
-    if (headerEnd === -1) break;
-
-    const header = buf.slice(0, headerEnd);
-    // Reject frames with duplicate Content-Length headers (RFC 9112 §6.5.7)
-    const clMatches = header.match(/^Content-Length:\s*(\d+)/gim);
-    if (!clMatches) {
-      // No Content-Length header — discard as malformed
-      buf = buf.slice(headerEnd + 4);
-      continue;
-    }
-    if (clMatches.length > 1) {
-      // Malformed: multiple Content-Length headers — cannot determine body boundary,
-      // clear the entire buffer to avoid cascading protocol desync.
-      buf = '';
-      break;
-    }
-
-    const contentLengthMatch = header.match(/^Content-Length:\s*(\d+)/im);
-    const contentLength = parseInt(contentLengthMatch[1], 10);
-    const bodyStart = headerEnd + 4;
-    if (buf.length < bodyStart + contentLength) break;
-
-    const body = buf.slice(bodyStart, bodyStart + contentLength);
-    buf = buf.slice(bodyStart + contentLength);
-
-    let msg;
-    try {
-      msg = JSON.parse(body);
-    } catch {
-      continue;
-    }
-
-    consumed.push(body);
-    if (onMessage) onMessage(msg);
-  }
-
-  return { consumed, remainder: buf };
 }
 
 process.stdin.on('data', (chunk) => {

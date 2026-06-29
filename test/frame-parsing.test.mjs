@@ -2,25 +2,12 @@
 // Verifies single header accepted, duplicate headers rejected,
 // Content-Length anchored with ^, and edge cases handled correctly.
 
-import { parseFrames } from '../src/index.mjs';
+import { test } from 'node:test';
+import { parseFrames } from '../src/framing.mjs';
 import { ok, equal, deepEqual } from 'node:assert/strict';
 
 function frame(body) {
   return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
-}
-
-let passed = 0;
-let failed = 0;
-
-function test(name, fn) {
-  try {
-    fn();
-    passed++;
-  } catch (e) {
-    failed++;
-    console.error(`FAIL: ${name}`);
-    console.error(`  ${e.message}`);
-  }
 }
 
 // ── single Content-Length header ──
@@ -178,6 +165,3 @@ test('non-JSON body gracefully skipped', () => {
   equal(consumed.length, 1);
   equal(remainder, '');
 });
-
-console.log(`\nResults: ${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
