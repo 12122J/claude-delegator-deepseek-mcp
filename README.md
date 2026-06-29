@@ -4,6 +4,8 @@
 
 Claude orchestrates, DeepSeek does the grunt work (big file audits, long generations, deep reasoning) at roughly **1/16th the price**. One tool call, no subagent spawn, no daemon, zero dependencies.
 
+**One command installs everything.** `init` wires up *both* the `deepseek` tool (the delegation) *and* the automatic gate (the "Delegate to DeepSeek? (y/n)" nudge before heavy reads and skill loads). No per-project setup, no manual prompting to remember — run it once, restart Claude Code, and delegation and gating just happen.
+
 <p>
   <a href="https://www.npmjs.com/package/claude-code-deepseek-delegator"><img alt="npm" src="https://img.shields.io/npm/v/claude-code-deepseek-delegator?color=cb3837&logo=npm"></a>
   <a href="https://www.npmjs.com/package/claude-code-deepseek-delegator"><img alt="downloads" src="https://img.shields.io/npm/dm/claude-code-deepseek-delegator?color=cb3837"></a>
@@ -15,15 +17,12 @@ Claude orchestrates, DeepSeek does the grunt work (big file audits, long generat
 > ⭐ **If this saves you money, please [star the repo](https://github.com/12122J/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
 
 ```console
-─── claude-code-deepseek-delegator
+> This task analyzes ~800 lines across 4 files.
+> Delegate to DeepSeek? (y/n)  y
+
 ◆ delegated to DeepSeek (v4-pro)
-
-[... full response ...]
-
-─── claude-code-deepseek-delegator · cost ───
-deepseek v4-pro $0.073  │  claude opus 4.8 $1.20
-saved $1.13 (94%)  │  144,000 tokens (120,000p + 24,000c)
-────────────────────────────────
+  Claude hands the heavy compute to DeepSeek, then synthesizes the
+  answer for you — same conversation, a fraction of the token spend.
 ```
 
 ---
@@ -157,7 +156,7 @@ Shows the model in use with its context window and output limit.
 | `deepseek-v4-pro` | $0.435 | $0.87 |
 | *Claude Opus 4.8 (for comparison)* | $5.00 | $25.00 |
 
-Every response prints the DeepSeek cost vs. the Claude-equivalent cost, with dollars and percentage saved.
+That gap — roughly an order of magnitude cheaper, before the `files[]` context savings — is the whole point of delegating heavy work.
 
 ---
 
