@@ -1,0 +1,55 @@
+name: Publish to npm
+
+# Publishes claude-code-deepseek-delegator to npm using a Trusted Publisher (OIDC).
+# No NPM_TOKEN secret needed: GitHub mints a short-lived identity token, npm
+# verifies it against the trusted publisher you configured, and provenance is
+# attached automatically so the npm page links back to this exact commit.
+#
+# One-push release:
+#   npm version patch        # bumps package.json + package-lock, creates the v* tag
+#   git push --follow-tags   # pushes the commit AND the tag -> this workflow runs
+# Or trigger manually from the Actions tab (workflow_dispatch).
+#
+# One-time setup on npmjs.com: package settings -> Trusted Publisher ->
+#   org/user: 12122J, repo: claude-delegator-deepseek-mcp, workflow: publish.yml
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # REQUIRED for OIDC trusted publishing + provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm (OIDC trusted publishing needs npm >= 11.5.1)
+        run: npm install -g npm@latest
+
+      - name: Run checks
+        run: npm run check
+
+      - name: Verify tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG does not match package.json version $PKG"
+            exit 1
+          fi
+          echo "tag and package.json agree on $PKG"
+
+      - name: Publish
+        run: npm publish --access public
