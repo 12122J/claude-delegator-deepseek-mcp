@@ -14,8 +14,19 @@ import {
   upsertBlock, addHooks, mcpEntry,
   MANAGED_RULES, BLOCK_BEGIN, BLOCK_END,
 } from './wiring.mjs';
+import { color, bold, dim } from '../colors.mjs';
 
 const PLACEHOLDER_KEY = 'sk-REPLACE_WITH_YOUR_DEEPSEEK_KEY';
+
+// Console styling helpers — keep init output clean and consistent.
+const RULE = dim('─'.repeat(64));
+const OK = color('green', '✓');
+const NO = color('red', '✗');
+const SKIP = dim('•');
+// One aligned status line: mark, bold fixed-width label, then detail.
+function row(mark, label, detail) {
+  return `  ${mark} ${bold(label.padEnd(10))} ${detail}`;
+}
 
 function has(cmd, args = ['--version']) {
   try { return spawnSync(cmd, args, { stdio: 'ignore' }).status === 0; } catch { return false; }
@@ -33,15 +44,39 @@ function ask(question) {
   });
 }
 
+// Like ask(), but does NOT echo what's typed — for pasting a secret so the
+// key never lands in the terminal scrollback.
+function askSecret(question) {
+  return new Promise((resolve) => {
+    process.stdout.write(question);
+    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    rl._writeToOutput = () => {}; // swallow the echoed keystrokes
+    rl.question('', (a) => {
+      rl.close();
+      process.stdout.write('\n');
+      resolve((a || '').trim());
+    });
+  });
+}
+
 async function resolveApiKey({ assumeYes }) {
-  // Best: reference the env var so no secret is written to disk.
+  // Best path: the key is already exported — reference it so no secret is
+  // written to disk and it's available to every tool, not just this one.
   if (process.env.DEEPSEEK_API_KEY) {
     return { value: '${DEEPSEEK_API_KEY}', mode: 'env-ref' };
   }
-  // Interactive: let the user paste it now.
+  // Otherwise, let the user paste it right here. Input is hidden.
   if (!assumeYes && process.stdin.isTTY) {
-    const pasted = await ask('Paste your DeepSeek API key (or press Enter to fill in later): ');
-    if (pasted) return { value: pasted, mode: 'literal' };
+    console.log('');
+    console.log(dim('  No DEEPSEEK_API_KEY in your environment. Get a key at'));
+    console.log(dim('  https://platform.deepseek.com/api_keys'));
+    const pasted = await askSecret('  Paste your DeepSeek API key (hidden), or press Enter to add it later: ');
+    if (pasted) {
+      if (!pasted.startsWith('sk-')) {
+        console.log(`  ${color('yellow', '!')} ${dim('that doesn\'t look like a DeepSeek key (they start with "sk-") — saving it anyway')}`);
+      }
+      return { value: pasted, mode: 'literal' };
+    }
   }
   return { value: PLACEHOLDER_KEY, mode: 'placeholder' };
 }
@@ -75,29 +110,36 @@ export async function runInit(argv = []) {
   const notes = [];
   const backups = [];
 
-  console.log(`\nclaude-code-deepseek-delegator · init${dryRun ? '  (dry run — no files will be written)' : ''}\n`);
+  console.log('');
+  console.log(`${color('cyan', '◆')} ${bold('claude-code-deepseek-delegator')} ${dim('· init')}${dryRun ? dim('   (dry run — nothing will be written)') : ''}`);
+  console.log(RULE);
+  console.log('');
 
   // ── Full disclosure: show EXACTLY what will be added, then ask. Nothing is
   //    written before this point. The user sees every change up front. ──
-  console.log('This will make the following changes to your Claude Code config:\n');
-  console.log(`  1. ${p.claudeMd}`);
-  console.log('     Append this block (your existing file is kept; nothing is overwritten):');
-  console.log('     ┌─────────────────────────────────────────────────────────────');
+  console.log(bold('This makes 3 changes to your Claude Code config:'));
+  console.log('');
+  console.log(`  ${bold('1.')} ${bold('CLAUDE.md')}   ${dim(p.claudeMd)}`);
+  console.log(`     Appends the block below. Your existing file is untouched ${dim('— nothing is overwritten.')}`);
+  console.log('');
   for (const line of `${BLOCK_BEGIN}\n${MANAGED_RULES}\n${BLOCK_END}`.split('\n')) {
-    console.log(`     │ ${line}`);
+    console.log(`${dim('     │')} ${line}`);
   }
-  console.log('     └─────────────────────────────────────────────────────────────\n');
-  console.log(`  2. ${p.settingsJson}`);
+  console.log('');
+  console.log(`  ${bold('2.')} ${bold('settings.json')}   ${dim(p.settingsJson)}`);
   if (noHooks) {
-    console.log('     (skipped — you passed --no-hooks)\n');
+    console.log(`     ${dim('skipped — you passed --no-hooks')}`);
   } else {
-    console.log('     Add two PreToolUse hooks that nudge "Delegate to DeepSeek? (y/n)"');
-    console.log('     before large file reads and skill loads. They only ever ADD context —');
-    console.log('     they never block, delete, or modify your tool calls. Plain `node`, no jq.\n');
+    console.log('     Adds two PreToolUse hooks that nudge "Delegate to DeepSeek? (y/n)" before');
+    console.log(`     large file reads and skill loads. They only ${bold('add context')} — they never`);
+    console.log(`     block, delete, or modify your tool calls. Plain ${dim('node')}, no ${dim('jq')}.`);
   }
-  console.log('  3. Register an MCP server named "deepseek" (command: npx -y claude-code-deepseek-delegator)\n');
-  console.log('Everything is reversible with:  npx claude-code-deepseek-delegator uninstall');
-  console.log('A timestamped backup is written before any file is changed.\n');
+  console.log('');
+  console.log(`  ${bold('3.')} ${bold('MCP server')}   registers "deepseek" ${dim('(npx -y claude-code-deepseek-delegator)')}`);
+  console.log('');
+  console.log(dim('  Reversible anytime:  npx claude-code-deepseek-delegator uninstall'));
+  console.log(dim('  A timestamped backup is written before any file changes.'));
+  console.log('');
 
   if (!dryRun && !assumeYes) {
     if (!process.stdin.isTTY) {
@@ -116,6 +158,8 @@ export async function runInit(argv = []) {
   const key = await resolveApiKey({ assumeYes });
   const entry = mcpEntry(key.value);
 
+  console.log(bold(dryRun ? 'Would apply:' : 'Applying:'));
+
   // 2) MCP server registration
   let mcp;
   if (cliAvailable()) {
@@ -130,7 +174,7 @@ export async function runInit(argv = []) {
     notes.push('`claude` CLI not found on PATH; used file fallback for MCP config.');
     mcp = wireMcpViaFile(p, entry, dryRun);
   }
-  console.log(`  ${mcp.ok ? '✓' : '✗'} MCP server   ${mcp.detail}`);
+  console.log(row(mcp.ok ? OK : NO, 'MCP server', mcp.detail));
   if (mcp.backup) backups.push(mcp.backup);
 
   // 3) CLAUDE.md rules
@@ -142,15 +186,15 @@ export async function runInit(argv = []) {
     if (bak) backups.push(bak);
     atomicWrite(p.claudeMd, nextMd);
   }
-  console.log(`  ✓ CLAUDE.md    ${dryRun ? 'would install' : mdChanged ? 'installed' : 'already up to date'} the delegation rules  (${p.claudeMd})`);
+  console.log(row(OK, 'CLAUDE.md', `${dryRun ? 'would install' : mdChanged ? 'installed' : 'already up to date'} the delegation rules  ${dim('(' + p.claudeMd + ')')}`));
 
   // 4) settings.json hooks
   if (noHooks) {
-    console.log('  • hooks        skipped (--no-hooks)');
+    console.log(row(SKIP, 'hooks', dim('skipped (--no-hooks)')));
   } else {
     const res = readJsonSafe(p.settingsJson);
     if (!res.ok) {
-      console.log(`  ✗ hooks        ${p.settingsJson} is not valid JSON — left untouched, hooks NOT installed`);
+      console.log(row(NO, 'hooks', `${dim(p.settingsJson)} is not valid JSON — left untouched, hooks NOT installed`));
       notes.push(`Fix ${p.settingsJson} then re-run init to enable hard enforcement.`);
     } else {
       const next = addHooks(res.data);
@@ -160,32 +204,35 @@ export async function runInit(argv = []) {
         if (bak) backups.push(bak);
         atomicWrite(p.settingsJson, JSON.stringify(next, null, 2) + '\n');
       }
-      console.log(`  ✓ hooks        ${dryRun ? 'would install' : changed ? 'installed' : 'already up to date'} Read + Skill PreToolUse hooks  (${p.settingsJson})`);
+      console.log(row(OK, 'hooks', `${dryRun ? 'would install' : changed ? 'installed' : 'already up to date'} Read + Skill PreToolUse hooks  ${dim('(' + p.settingsJson + ')')}`));
       if (!has('node')) notes.push('`node` was not found on PATH — the PreToolUse hooks run via node, so make sure node is on PATH.');
     }
   }
 
   // Key guidance
   if (key.mode === 'env-ref') notes.push('MCP config references ${DEEPSEEK_API_KEY}. Make sure that variable is exported in your shell profile so Claude Code can read it.');
+  if (key.mode === 'literal') notes.push('Your API key was saved into the MCP config. To keep it out of that file (and share it with other tools), export DEEPSEEK_API_KEY in your shell profile and re-run init.');
   if (key.mode === 'placeholder') notes.push(`No API key set. Replace "${PLACEHOLDER_KEY}" in your MCP config, or set DEEPSEEK_API_KEY and re-run init.`);
 
   // Report
   console.log('');
+  console.log(RULE);
   if (backups.length) {
-    console.log('  Backups written (restore these to undo manually):');
-    for (const b of backups) console.log(`    - ${b}`);
+    console.log(dim('  Backups (restore to undo manually):'));
+    for (const b of backups) console.log(dim(`    ${b}`));
     console.log('');
   }
   if (notes.length) {
-    console.log('  Notes:');
-    for (const n of notes) console.log(`    ! ${n}`);
+    console.log(`  ${color('yellow', 'Notes')}`);
+    for (const n of notes) console.log(`    ${color('yellow', '!')} ${n}`);
     console.log('');
   }
   if (dryRun) {
-    console.log('  Dry run complete. Re-run without --dry-run to apply.\n');
+    console.log(`  ${bold('Dry run complete.')} Re-run without ${dim('--dry-run')} to apply.`);
   } else {
-    console.log('  Done. Restart Claude Code, then heavy tasks will prompt: "Delegate to DeepSeek? (y/n)".');
-    console.log('  To remove everything cleanly later:  npx claude-code-deepseek-delegator uninstall\n');
+    console.log(`  ${color('green', 'Done.')} Restart Claude Code — heavy tasks will then prompt ${bold('"Delegate to DeepSeek? (y/n)"')}.`);
+    console.log(dim('  Remove everything later:  npx claude-code-deepseek-delegator uninstall'));
   }
+  console.log('');
   return 0;
 }
