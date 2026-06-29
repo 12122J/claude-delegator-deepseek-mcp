@@ -163,7 +163,7 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
         const req = request(
           {
             hostname: API_HOST,
-            path: '/v1/chat/completions',
+            path: '/chat/completions',
             method: 'POST',
             timeout: TIMEOUT_MS,
             headers: {
@@ -215,7 +215,7 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
       const req = request(
         {
           hostname: API_HOST,
-          path: '/v1/chat/completions',
+          path: '/chat/completions',
           method: 'POST',
           timeout: TIMEOUT_MS,
           headers: {
@@ -243,8 +243,23 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
               }
               const choice = json.choices?.[0];
               const message = choice?.message;
+              const finish = choice?.finish_reason ?? 'unknown';
+              // The model can return an empty `content` while still billing
+              // tokens (e.g. the whole budget went to reasoning and finish_reason
+              // came back 'length'). Surface why instead of returning a silent
+              // blank that looks like the tool is broken.
+              let content = typeof message?.content === 'string' ? message.content : '';
+              if (!content) {
+                const reasoning = typeof message?.reasoning_content === 'string' ? message.reasoning_content : '';
+                if (finish === 'length') {
+                  content = '[no answer returned — hit the token limit before producing output'
+                    + (reasoning ? '; partial reasoning: ' + reasoning : '') + ']';
+                } else {
+                  content = reasoning || '(empty response)';
+                }
+              }
               resolve({
-                content: message?.content ?? '(empty response)',
+                content,
                 model: json.model,
                 usage: json.usage
                   ? {
@@ -253,7 +268,7 @@ export async function callDeepSeek({ prompt, system, model = 'deepseek-v4-pro', 
                       totalTokens: json.usage.total_tokens,
                     }
                   : null,
-                finishReason: choice?.finish_reason ?? 'unknown',
+                finishReason: finish,
               });
             } catch (e) {
               reject(new DeepSeekError(`Failed to parse response: ${e.message}`, res.statusCode, data));
