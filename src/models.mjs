@@ -1,5 +1,7 @@
 // DeepSeek model registry
-// Each entry defines model capabilities, context window, and pricing tier.
+// deepseek-v4-pro is the one and only model used for everything — 1M context,
+// 384K max output. (deepseek-chat / deepseek-reasoner are deprecated by DeepSeek
+// on 2026/07/24; deepseek-v4-flash is the cheaper sibling we don't use here.)
 // NOTE: Models must stay in sync with pricing.mjs — add entries to both files.
 
 export const MODELS = {
@@ -7,22 +9,7 @@ export const MODELS = {
     name: 'DeepSeek V4 Pro',
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
-    thinking: true,
-    description: 'Smartest model with thinking capability. Best for complex analysis, code generation, architecture, and multi-step reasoning.',
-  },
-  'deepseek-v4-flash': {
-    name: 'DeepSeek V4 Flash',
-    contextWindow: 1_000_000,
-    maxOutputTokens: 384_000,
-    thinking: true,
-    description: 'Faster and cheaper model. Best for simpler tasks, quick answers, and when latency matters more than depth.',
-  },
-  'deepseek-reasoner': {
-    name: 'DeepSeek Reasoner',
-    contextWindow: 65536,
-    maxOutputTokens: 8192,
-    thinking: true,
-    description: 'Specialized reasoning model. Best for math, logic, and problems requiring step-by-step deduction.',
+    description: 'Smartest model. Best for complex analysis, code generation, architecture, and multi-step reasoning.',
   },
 };
 
@@ -36,7 +23,6 @@ export function listModels() {
     name: info.name,
     contextWindow: info.contextWindow,
     maxOutputTokens: info.maxOutputTokens,
-    thinking: info.thinking,
     description: info.description,
   }));
 }

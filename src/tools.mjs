@@ -24,19 +24,10 @@ export const TOOLS = [
           type: 'string',
           description: 'Optional system prompt to set context/behavior',
         },
-        model: {
-          type: 'string',
-          description: `DeepSeek model. Default: ${getDefaultModel()}. Options: deepseek-v4-pro (smartest, thinking), deepseek-v4-flash (fast/cheap), deepseek-reasoner (math/logic)`,
-          default: getDefaultModel(),
-        },
         temperature: {
           type: 'number',
           description: 'Temperature (0-2). Lower = more deterministic. Default: 0.3',
           default: 0.3,
-        },
-        maxTokens: {
-          type: 'number',
-          description: 'Max tokens in response. Default: model max',
         },
         stream: {
           type: 'boolean',
@@ -59,7 +50,7 @@ export const TOOLS = [
   },
   {
     name: 'deepseek_models',
-    description: 'List available DeepSeek models with capabilities, context windows, and pricing',
+    description: 'Show the DeepSeek model in use with its context window and output limit',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -136,7 +127,7 @@ export async function handleToolCall(name, args) {
         ...models.map(
           (m) =>
             `${color('green', '●')} ${bold(m.id)} ${dim('— ' + m.name)}\n` +
-            `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('output:')} ${(m.maxOutputTokens / 1024).toFixed(0)}K max  ${dim('thinking:')} ${m.thinking ? color('green', 'on') : color('yellow', 'off')}\n` +
+            `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('output:')} ${(m.maxOutputTokens / 1024).toFixed(0)}K max\n` +
             `  ${dim(m.description)}\n`
         ),
         dim('─────────────────────────────────────'),
