@@ -16,14 +16,9 @@ Claude orchestrates, DeepSeek does the grunt work (big file audits, long generat
 
 > ⭐ **If this saves you money, please [star the repo](https://github.com/12122J/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
 
-```console
-> This task analyzes ~800 lines across 4 files.
-> Delegate to DeepSeek? (y/n)  y
+<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/hero.svg" alt="A Claude Code session: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, the task is delegated via files[], Claude synthesizes the answer, and a cost receipt shows $0.0114 spent and $0.2472 saved (96% vs Claude Opus)" width="860">
 
-◆ delegated to DeepSeek (v4-pro)
-  Claude hands the heavy compute to DeepSeek, then synthesizes the
-  answer for you — same conversation, a fraction of the token spend.
-```
+Every call ends with that receipt — shown to you automatically, straight from the API's own token counts. You always know what you spent and what you saved.
 
 ---
 
@@ -35,6 +30,8 @@ npx claude-code-deepseek-delegator init
 
 That's it. `init` wires everything into Claude Code in one shot, and **shows you exactly what it will change and asks before writing anything.** Restart Claude Code and you're done.
 
+<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/init.svg" alt="init output: full disclosure of the 3 changes (CLAUDE.md block, settings.json hooks, MCP server), a confirmation prompt, then three green check rows" width="860">
+
 Then sanity-check it:
 
 ```bash
@@ -42,6 +39,8 @@ npx claude-code-deepseek-delegator doctor
 ```
 
 `doctor` doesn't just check that files exist — it **actually fires the gate hooks** and confirms the delegation prompt is live.
+
+<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/doctor.svg" alt="doctor output: nine green checks including live-fire tests of the Read gate, Skill gate, and the cost display hook" width="860">
 
 Get a DeepSeek API key at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). Set it once:
 
@@ -56,7 +55,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here   # add to ~/.zshrc or ~/.bashrc
 `init` is explicit and reversible. It will:
 
 1. **Append a clearly-labeled block to `~/.claude/CLAUDE.md`** — the delegation rules. It's fenced with `<!-- >>> ... >>> -->` markers, says who added it and how to remove it, and **never touches anything else in your file.** You see the exact text before it's written.
-2. **Add two `PreToolUse` hooks to `~/.claude/settings.json`** — they inject a "Delegate to DeepSeek? (y/n)" nudge before large file reads and skill loads. They **only add context — they never block, delete, or modify your tool calls.** Plain `node`, no `jq` needed.
+2. **Add three hooks to `~/.claude/settings.json`** — two `PreToolUse` hooks that inject a "Delegate to DeepSeek? (y/n)" nudge before large file reads and skill loads, and one `PostToolUse` hook that displays the cost receipt after every `deepseek` call. They **only add context or display info — they never block, delete, or modify your tool calls.** Plain `node`, no `jq` needed.
 3. **Register an MCP server** named `deepseek` (`npx -y claude-code-deepseek-delegator`).
 
 Before any of that, it writes a timestamped backup of every file it changes. To undo everything:
@@ -108,6 +107,18 @@ deepseek({
 ```
 
 Claude then **synthesizes** DeepSeek's answer for you instead of pasting it verbatim — so you get the conclusion, cheaply, in the same conversation.
+
+## The cost receipt (you see every cent)
+
+After every `deepseek` call, a one-line receipt is displayed to you:
+
+```
+deepseek v4-pro · $0.0114 · saved $0.2472 (96% vs Claude Opus) · 28,410 tokens (26,930 in + 1,480 out)
+```
+
+It's computed from the API's own token usage and shown by a `PostToolUse` hook — **deterministically, not by asking the model to remember.** Claude physically cannot swallow the number. The full breakdown (DeepSeek cost vs the Claude-equivalent cost, savings %, prompt/completion tokens) also lands in the tool result, so Claude can answer "how much have we spent this session?" accurately.
+
+Manual setups without hooks still get the footer in every tool result plus a rule instructing Claude to surface it — run `init` if you want the guaranteed display.
 
 ---
 
@@ -190,6 +201,8 @@ npx claude-code-deepseek-delegator <command>
 ## FAQ
 
 **Does `npm install` alone enable the gate?** No. Installing only provides the binary. Run `init` (or do the manual MCP setup) to wire it in. The automatic "Delegate? (y/n)" gate needs the CLAUDE.md rules + hooks that `init` adds.
+
+**Where do I see what a call cost?** Right in the conversation — after every `deepseek` call a receipt line appears with the cost, the savings vs Claude, and the token counts. It's displayed by a `PostToolUse` hook that `init` installs, so it shows up even if Claude forgets to mention it. Already installed before v2.7? Re-run `init` once to pick up the cost hook.
 
 **Will it overwrite my CLAUDE.md?** Never. It appends one fenced block and shows you the exact text first. Everything else is left byte-for-byte.
 

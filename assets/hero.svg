@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="520" viewBox="0 0 860 520" font-family="'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="14">
+  <!-- The full delegation loop in one Claude Code session: gate → y → tool call → synthesized answer → cost receipt -->
+  <defs>
+    <clipPath id="win"><rect x="0" y="0" width="860" height="520" rx="12"/></clipPath>
+  </defs>
+  <g clip-path="url(#win)">
+    <rect width="860" height="520" rx="12" fill="#1a1b26"/>
+    <rect width="860" height="40" fill="#16161e"/>
+    <circle cx="24" cy="20" r="6" fill="#f7768e"/>
+    <circle cx="44" cy="20" r="6" fill="#e0af68"/>
+    <circle cx="64" cy="20" r="6" fill="#9ece6a"/>
+    <text x="430" y="25" text-anchor="middle" fill="#565f89" font-size="12">claude — Claude Code</text>
+
+    <!-- user prompt -->
+    <text x="32" y="76" fill="#c0caf5"><tspan fill="#7aa2f7" font-weight="bold">&gt;</tspan> audit src/auth for security issues and rank them by severity</text>
+
+    <!-- scope estimate + gate -->
+    <text x="32" y="116" fill="#c0caf5">This task analyzes <tspan font-weight="bold">~800 lines across 4 files</tspan>.</text>
+    <text x="32" y="140" fill="#c0caf5"><tspan font-weight="bold" fill="#e0af68">Delegate to DeepSeek? (y/n)</tspan></text>
+
+    <!-- user answer -->
+    <text x="32" y="180" fill="#c0caf5"><tspan fill="#7aa2f7" font-weight="bold">&gt;</tspan> y</text>
+
+    <!-- tool call -->
+    <text x="32" y="220" fill="#565f89">⏺ deepseek (MCP) · prompt + files[] — file bytes go straight to DeepSeek,</text>
+    <text x="47" y="240" fill="#565f89">never through Claude's context</text>
+
+    <!-- tool result header -->
+    <text x="32" y="280" fill="#565f89">─── claude-code-deepseek-delegator</text>
+    <text x="32" y="304" fill="#c0caf5"><tspan fill="#9ece6a">◆</tspan> <tspan font-weight="bold">delegated to</tspan> <tspan fill="#7dcfff">DeepSeek</tspan> <tspan fill="#565f89">(v4-pro)</tspan></text>
+
+    <!-- synthesized answer -->
+    <text x="32" y="344" fill="#c0caf5">⏺ Found <tspan font-weight="bold">3 issues</tspan>: a JWT signature bypass in verify() <tspan fill="#f7768e">(critical)</tspan>, a</text>
+    <text x="47" y="364" fill="#c0caf5">timing-unsafe token compare <tspan fill="#e0af68">(high)</tspan>, and a session fixation on login</text>
+    <text x="47" y="384" fill="#c0caf5"><tspan fill="#e0af68">(high)</tspan>. Fixes ranked with patches below…</text>
+
+    <!-- cost receipt — one clean muted line, exactly as Claude Code renders a
+         hook systemMessage: a dim system note under the tool call, no box -->
+    <text x="32" y="440" fill="#565f89">deepseek v4-pro · saved $0.2472 (96% vs Opus) · spent $0.0114 · 28,410 tokens</text>
+
+    <text x="32" y="496" fill="#565f89" font-size="12">the receipt line is printed by Claude Code itself after every call — real API token counts, not estimates</text>
+  </g>
+</svg>

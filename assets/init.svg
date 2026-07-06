@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="470" viewBox="0 0 860 470" font-family="'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="14">
+  <!-- `npx claude-code-deepseek-delegator init` — full disclosure, then aligned ✓ rows. Text mirrors src/setup/init.mjs verbatim. -->
+  <defs>
+    <clipPath id="win"><rect x="0" y="0" width="860" height="470" rx="12"/></clipPath>
+  </defs>
+  <g clip-path="url(#win)">
+    <rect width="860" height="470" rx="12" fill="#1a1b26"/>
+    <rect width="860" height="40" fill="#16161e"/>
+    <circle cx="24" cy="20" r="6" fill="#f7768e"/>
+    <circle cx="44" cy="20" r="6" fill="#e0af68"/>
+    <circle cx="64" cy="20" r="6" fill="#9ece6a"/>
+    <text x="430" y="25" text-anchor="middle" fill="#565f89" font-size="12">npx claude-code-deepseek-delegator init</text>
+
+    <text x="32" y="76" fill="#c0caf5"><tspan fill="#7dcfff">◆</tspan> <tspan font-weight="bold">claude-code-deepseek-delegator</tspan> <tspan fill="#565f89">· init</tspan></text>
+    <text x="32" y="100" fill="#565f89">────────────────────────────────────────────────────────────────</text>
+
+    <text x="32" y="132" fill="#c0caf5" font-weight="bold">This makes 3 changes to your Claude Code config:</text>
+
+    <text x="48" y="164" fill="#c0caf5"><tspan font-weight="bold">1. CLAUDE.md</tspan>   <tspan fill="#565f89">~/.claude/CLAUDE.md</tspan></text>
+    <text x="64" y="184" fill="#c0caf5">Appends one fenced block — the delegation rules. <tspan fill="#565f89">Nothing is overwritten.</tspan></text>
+
+    <text x="48" y="216" fill="#c0caf5"><tspan font-weight="bold">2. settings.json</tspan>   <tspan fill="#565f89">~/.claude/settings.json</tspan></text>
+    <text x="64" y="236" fill="#c0caf5">Two PreToolUse gates + one PostToolUse hook that shows the</text>
+    <text x="64" y="256" fill="#c0caf5"><tspan font-weight="bold">cost + savings</tspan> after every deepseek call. Never blocks or modifies.</text>
+
+    <text x="48" y="288" fill="#c0caf5"><tspan font-weight="bold">3. MCP server</tspan>   registers "deepseek" <tspan fill="#565f89">(npx -y claude-code-deepseek-delegator)</tspan></text>
+
+    <text x="32" y="320" fill="#565f89">Reversible anytime: npx claude-code-deepseek-delegator uninstall</text>
+    <text x="32" y="340" fill="#565f89">A timestamped backup is written before any file changes.</text>
+
+    <text x="32" y="372" fill="#c0caf5">Apply these changes? (y/N): <tspan font-weight="bold">y</tspan></text>
+
+    <text x="32" y="404" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="bold">MCP server</tspan>  registered via claude mcp add-json</text>
+    <text x="32" y="424" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="bold">CLAUDE.md</tspan>   installed the delegation rules</text>
+    <text x="32" y="444" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="bold">hooks</tspan>       installed Read + Skill gates + cost display</text>
+  </g>
+</svg>

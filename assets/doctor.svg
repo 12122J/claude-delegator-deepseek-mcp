@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="360" viewBox="0 0 860 360" font-family="'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="14">
+  <!-- `doctor` output — the live-fire checks, mirroring src/setup/doctor.mjs labels verbatim. -->
+  <defs>
+    <clipPath id="win"><rect x="0" y="0" width="860" height="360" rx="12"/></clipPath>
+  </defs>
+  <g clip-path="url(#win)">
+    <rect width="860" height="360" rx="12" fill="#1a1b26"/>
+    <rect width="860" height="40" fill="#16161e"/>
+    <circle cx="24" cy="20" r="6" fill="#f7768e"/>
+    <circle cx="44" cy="20" r="6" fill="#e0af68"/>
+    <circle cx="64" cy="20" r="6" fill="#9ece6a"/>
+    <text x="430" y="25" text-anchor="middle" fill="#565f89" font-size="12">npx claude-code-deepseek-delegator doctor</text>
+
+    <text x="32" y="74" fill="#c0caf5">Checks:</text>
+    <text x="48" y="102" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> Node.js available on PATH (required for the hooks)</text>
+    <text x="48" y="126" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> MCP server "deepseek" registered with Claude Code</text>
+    <text x="48" y="150" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> Auto-delegation rules present in CLAUDE.md</text>
+    <text x="48" y="174" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> PreToolUse hooks installed (found 2/2)</text>
+    <text x="48" y="198" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> PostToolUse cost hook installed (found 1/1)</text>
+    <text x="48" y="222" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> Read gate FIRES on a &gt;300-line file <tspan fill="#7dcfff">(live test)</tspan></text>
+    <text x="48" y="246" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> Skill gate FIRES on skill load <tspan fill="#7dcfff">(live test)</tspan></text>
+    <text x="48" y="270" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> Cost display FIRES after a deepseek call <tspan fill="#7dcfff">(live test)</tspan></text>
+    <text x="48" y="294" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> DeepSeek API key is set (env var or embedded in config)</text>
+
+    <text x="32" y="330" fill="#9ece6a">All green. The delegation gate is wired and firing.</text>
+  </g>
+</svg>
