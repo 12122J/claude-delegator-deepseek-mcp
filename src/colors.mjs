@@ -1,9 +1,12 @@
 // ANSI color helpers — Claude Code CLI aesthetic (Tokyo Night palette)
-// Respects NO_COLOR / FORCE_COLOR. Does NOT check isTTY — MCP servers run as
-// child processes with piped stdio, so isTTY is always false even when the
-// parent terminal supports color. Color rendering is the client's responsibility.
+// Respects NO_COLOR / FORCE_COLOR, then falls back to isTTY: the CLI
+// (init/doctor/uninstall) runs in a real terminal and gets color, while the
+// MCP server runs with piped stdio and emits plain text — Claude Code does not
+// render ANSI in tool results, so escape codes there are pure noise (and
+// wasted tokens). Set FORCE_COLOR=1 to override for a client that renders it.
 
-const noColor = process.env.NO_COLOR != null || process.env.FORCE_COLOR === '0';
+const noColor = process.env.NO_COLOR != null || process.env.FORCE_COLOR === '0'
+  || (process.env.FORCE_COLOR == null && !process.stdout.isTTY);
 
 const ansiCodes = {
   reset: '\x1b[0m',
