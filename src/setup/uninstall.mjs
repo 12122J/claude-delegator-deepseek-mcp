@@ -1,7 +1,8 @@
 // `claude-code-deepseek-delegator uninstall` — remove exactly what init added,
-// and nothing else. Removes the managed CLAUDE.md block, our PreToolUse hooks,
-// and the MCP server registration. User content and unrelated config are left
-// fully intact. Backs up every file it changes.
+// and nothing else. Removes the managed CLAUDE.md block, our hooks (PreToolUse
+// gates + PostToolUse cost display), and the MCP server registration. User
+// content and unrelated config are left fully intact. Backs up every file it
+// changes.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';

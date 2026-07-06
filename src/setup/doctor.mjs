@@ -54,8 +54,10 @@ export async function runDoctor() {
   // 4) Hooks present in settings.json
   const sres = readJsonSafe(p.settingsJson);
   const installedHooks = sres.ok ? (sres.data?.hooks?.PreToolUse || []).filter((e) => e._managedBy === MARKER) : [];
+  const installedPostHooks = sres.ok ? (sres.data?.hooks?.PostToolUse || []).filter((e) => e._managedBy === MARKER) : [];
   if (!sres.ok) add(false, 'settings.json is valid JSON', `Fix ${p.settingsJson} (it is currently malformed), then re-run init.`);
   add(installedHooks.length === 2, `PreToolUse hooks installed (found ${installedHooks.length}/2)`, 'Run: npx claude-code-deepseek-delegator init');
+  add(installedPostHooks.length === 1, `PostToolUse cost hook installed (found ${installedPostHooks.length}/1)`, 'Run: npx claude-code-deepseek-delegator init');
 
   // 5) THE KEY CHECK — fire the installed hooks and confirm the gate fires.
   if (installedHooks.length) {
@@ -69,6 +71,16 @@ export async function runDoctor() {
       const out = fireHook(skill.hooks[0].command, JSON.stringify({ tool_input: { skill: 'demo' } }));
       add(out.includes('Delegate to DeepSeek? (y/n)'), 'Skill gate FIRES on skill load (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
     }
+  }
+  if (installedPostHooks.length) {
+    const sample = {
+      tool_name: 'mcp__deepseek__deepseek',
+      tool_response: { content: [{ type: 'text', text: 'deepseek-cost:{"v":1,"line":"cost display self-test"}' }] },
+    };
+    const out = fireHook(installedPostHooks[0].hooks[0].command, JSON.stringify(sample));
+    add(out.includes('systemMessage') && out.includes('cost display self-test'),
+      'Cost display FIRES after a deepseek call (live test)',
+      'The cost hook did not emit a systemMessage. Ensure `node` runs from a plain shell.');
   }
 
   // 6) API key resolvable at runtime

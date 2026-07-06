@@ -131,8 +131,9 @@ export async function runInit(argv = []) {
     console.log(`     ${dim('skipped — you passed --no-hooks')}`);
   } else {
     console.log('     Adds two PreToolUse hooks that nudge "Delegate to DeepSeek? (y/n)" before');
-    console.log(`     large file reads and skill loads. They only ${bold('add context')} — they never`);
-    console.log(`     block, delete, or modify your tool calls. Plain ${dim('node')}, no ${dim('jq')}.`);
+    console.log('     large file reads and skill loads, plus one PostToolUse hook that shows the');
+    console.log(`     cost + savings after every deepseek call. They only ${bold('add context or display info')}`);
+    console.log(`     — they never block, delete, or modify your tool calls. Plain ${dim('node')}, no ${dim('jq')}.`);
   }
   console.log('');
   console.log(`  ${bold('3.')} ${bold('MCP server')}   registers "deepseek" ${dim('(npx -y claude-code-deepseek-delegator)')}`);
@@ -204,7 +205,7 @@ export async function runInit(argv = []) {
         if (bak) backups.push(bak);
         atomicWrite(p.settingsJson, JSON.stringify(next, null, 2) + '\n');
       }
-      console.log(row(OK, 'hooks', `${dryRun ? 'would install' : changed ? 'installed' : 'already up to date'} Read + Skill PreToolUse hooks  ${dim('(' + p.settingsJson + ')')}`));
+      console.log(row(OK, 'hooks', `${dryRun ? 'would install' : changed ? 'installed' : 'already up to date'} Read + Skill gates + cost display  ${dim('(' + p.settingsJson + ')')}`));
       if (!has('node')) notes.push('`node` was not found on PATH — the PreToolUse hooks run via node, so make sure node is on PATH.');
     }
   }
