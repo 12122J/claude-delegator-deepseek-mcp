@@ -44,7 +44,8 @@ Print a one-line scope estimate first, then the question. Example:
 \`\`\`
 
 - If the user says **y**: call the \`deepseek\` tool (model \`deepseek-v4-pro\`). Pass file paths in \`files[]\` so the bytes go straight to DeepSeek and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.
-- If the user says **n**: do it yourself.`;
+- If the user says **n**: do it yourself.
+- Every \`deepseek\` result ends with a cost footer. When you reply, surface its savings line to the user (cost, savings vs Claude, tokens) — never silently drop it.`;
 
 // The PreToolUse hooks (deterministic enforcement). Written as `node -e` one-
 // liners so they need NO extra tooling: Node is already present (Claude Code
@@ -55,10 +56,24 @@ const READ_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("en
 
 const SKILL_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: about to load skill \\""+k+"\\". If the resulting work is large (>200 lines of code, >3 files, >4k tokens of output, or heavy analysis), first ask the user exactly: \\"Delegate to DeepSeek? (y/n)\\" before proceeding."}}))}catch(e){}})'`;
 
+// PostToolUse cost display: after every deepseek call, find the flat
+// `deepseek-cost:{...}` marker the server appends to its footer (pricing.mjs)
+// and surface its `line` as a systemMessage — the only hook channel Claude Code
+// shows directly to the user, so the cost can never be silently dropped by the
+// model. Collects every string in tool_response recursively, so it works for
+// both the buffered shape (one text item) and the streamed shape (many).
+const COST_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}");const g=(o)=>typeof o==="string"?o:(o&&typeof o==="object"?Object.values(o).map(g).join("\\n"):"");const m=g(i.tool_response).match(/deepseek-cost:(\\{.*?\\})/);if(!m)return;const c=JSON.parse(m[1]);if(c&&typeof c.line==="string"&&c.line.length<400)process.stdout.write(JSON.stringify({systemMessage:c.line}))}catch(e){}})'`;
+
 export function managedHooks() {
   return [
     { matcher: 'Read', _managedBy: MARKER, hooks: [{ type: 'command', command: READ_HOOK_CMD }] },
     { matcher: 'Skill', _managedBy: MARKER, hooks: [{ type: 'command', command: SKILL_HOOK_CMD }] },
+  ];
+}
+
+export function managedPostHooks() {
+  return [
+    { matcher: '^mcp__deepseek__deepseek$', _managedBy: MARKER, hooks: [{ type: 'command', command: COST_HOOK_CMD }] },
   ];
 }
 
@@ -153,28 +168,34 @@ function isOurs(entry) {
   if (entry && entry._managedBy === MARKER) return true;
   // Defensive fallback: identify by our signature even if the tag was stripped.
   const cmds = (entry?.hooks || []).map((h) => h?.command || '').join('\n');
-  return cmds.includes('Delegate to DeepSeek? (y/n)') && cmds.includes('node -e');
+  return (cmds.includes('Delegate to DeepSeek? (y/n)') || cmds.includes('deepseek-cost:')) && cmds.includes('node -e');
 }
 
-// Ensure settings contains exactly our managed PreToolUse hooks (idempotent),
-// without disturbing any other hooks the user has. Mutates and returns a copy.
+// Ensure settings contains exactly our managed hooks (idempotent), without
+// disturbing any other hooks the user has. Mutates and returns a copy.
 export function addHooks(settingsIn) {
   const settings = structuredClone(settingsIn || {});
   if (typeof settings.hooks !== 'object' || settings.hooks === null) settings.hooks = {};
-  if (!Array.isArray(settings.hooks.PreToolUse)) settings.hooks.PreToolUse = [];
   // drop any prior copies of ours, then add fresh — keeps it idempotent
-  settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter((e) => !isOurs(e));
-  settings.hooks.PreToolUse.push(...managedHooks());
+  for (const [event, ours] of [['PreToolUse', managedHooks()], ['PostToolUse', managedPostHooks()]]) {
+    if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = [];
+    settings.hooks[event] = settings.hooks[event].filter((e) => !isOurs(e));
+    settings.hooks[event].push(...ours);
+  }
   return settings;
 }
 
 export function removeHooks(settingsIn) {
   const settings = structuredClone(settingsIn || {});
-  const pre = settings?.hooks?.PreToolUse;
-  if (!Array.isArray(pre)) return settings;
-  settings.hooks.PreToolUse = pre.filter((e) => !isOurs(e));
-  if (settings.hooks.PreToolUse.length === 0) delete settings.hooks.PreToolUse;
-  if (settings.hooks && Object.keys(settings.hooks).length === 0) delete settings.hooks;
+  let sawArray = false; // a pre-existing empty hooks:{} we never touched stays as-is
+  for (const event of ['PreToolUse', 'PostToolUse']) {
+    const arr = settings?.hooks?.[event];
+    if (!Array.isArray(arr)) continue;
+    sawArray = true;
+    settings.hooks[event] = arr.filter((e) => !isOurs(e));
+    if (settings.hooks[event].length === 0) delete settings.hooks[event];
+  }
+  if (sawArray && settings.hooks && Object.keys(settings.hooks).length === 0) delete settings.hooks;
   return settings;
 }
 
