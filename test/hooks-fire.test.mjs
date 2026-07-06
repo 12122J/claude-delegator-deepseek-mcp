@@ -8,11 +8,13 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { managedHooks } from '../src/setup/wiring.mjs';
+import { managedHooks, managedPostHooks } from '../src/setup/wiring.mjs';
+import { buildFooter } from '../src/pricing.mjs';
 
 const hooks = managedHooks();
 const readHook = hooks.find((h) => h.matcher === 'Read').hooks[0].command;
 const skillHook = hooks.find((h) => h.matcher === 'Skill').hooks[0].command;
+const costHook = managedPostHooks()[0].hooks[0].command;
 
 function fire(command, input) {
   const r = spawnSync('sh', ['-c', command], { input: JSON.stringify(input), encoding: 'utf8' });
@@ -53,5 +55,61 @@ test('Skill hook fires the gate and names the skill', () => {
 
 test('hooks never crash on malformed stdin', () => {
   const r = spawnSync('sh', ['-c', skillHook], { input: 'not json at all', encoding: 'utf8' });
+  equal(r.status, 0, 'exit 0 even on garbage input');
+});
+
+// ── PostToolUse cost display ────────────────────────────────────────────────
+// End to end: the REAL footer produced by pricing.mjs (ANSI codes and all) must
+// round-trip through the exact hook command stored in settings.json and come
+// out as a user-visible systemMessage.
+
+test('cost hook surfaces the real pricing.mjs footer as a systemMessage', () => {
+  const footer = buildFooter(
+    { usage: { promptTokens: 12345, completionTokens: 678, totalTokens: 13023 } },
+    'deepseek-v4-pro'
+  );
+  const { out } = fire(costHook, {
+    tool_name: 'mcp__deepseek__deepseek',
+    tool_response: { content: [{ type: 'text', text: 'the actual answer\n' + footer }] },
+  });
+  ok(out.length > 0, 'hook produced output');
+  const parsed = JSON.parse(out);
+  ok(typeof parsed.systemMessage === 'string', 'systemMessage present');
+  ok(parsed.systemMessage.includes('saved'), 'mentions savings');
+  ok(parsed.systemMessage.includes('13,023 tokens'), 'mentions token count');
+  ok(parsed.systemMessage.includes('$'), 'mentions dollar cost');
+  ok(!parsed.systemMessage.includes(String.fromCharCode(27)), 'no ANSI codes leak into the message');
+});
+
+test('cost hook handles the streamed shape (footer in the last content item)', () => {
+  const footer = buildFooter(
+    { usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 } },
+    'deepseek-v4-pro'
+  );
+  const { out } = fire(costHook, {
+    tool_response: { content: [{ type: 'text', text: 'chunk 1' }, { type: 'text', text: 'chunk 2' }, { type: 'text', text: footer }] },
+  });
+  const parsed = JSON.parse(out);
+  ok(parsed.systemMessage.includes('150 tokens'));
+});
+
+test('cost hook stays silent when there is no cost marker', () => {
+  const { out } = fire(costHook, {
+    tool_response: { content: [{ type: 'text', text: 'an answer with no usage data' }] },
+  });
+  equal(out, '', 'no message without a marker');
+});
+
+test('cost hook stays silent when usage was missing (empty footer)', () => {
+  const footer = buildFooter({ usage: null }, 'deepseek-v4-pro');
+  equal(footer, '', 'no footer without usage');
+  const { out } = fire(costHook, {
+    tool_response: { content: [{ type: 'text', text: 'answer' + footer }] },
+  });
+  equal(out, '');
+});
+
+test('cost hook never crashes on malformed stdin', () => {
+  const r = spawnSync('sh', ['-c', costHook], { input: 'not json at all', encoding: 'utf8' });
   equal(r.status, 0, 'exit 0 even on garbage input');
 });

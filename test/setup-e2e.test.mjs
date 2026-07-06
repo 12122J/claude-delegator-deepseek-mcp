@@ -55,7 +55,8 @@ test('init wires everything without clobbering user content', () => {
   const s = readJson(settings);
   equal(s.permissions.allow[0], 'Bash(ls:*)', 'unrelated settings preserved');
   ok(s.hooks.PreToolUse.some((e) => e.matcher === 'Bash'), 'user hook preserved');
-  equal(s.hooks.PreToolUse.filter((e) => e._managedBy === MARKER).length, 2, 'two managed hooks');
+  equal(s.hooks.PreToolUse.filter((e) => e._managedBy === MARKER).length, 2, 'two managed gate hooks');
+  equal(s.hooks.PostToolUse.filter((e) => e._managedBy === MARKER).length, 1, 'cost display hook installed');
 
   ok(existsSync(mcp), 'mcp.json written (file fallback)');
   const m = readJson(mcp);
@@ -73,7 +74,8 @@ test('init is idempotent — second run does not duplicate', () => {
   const md = readFileSync(join(home, '.claude', 'CLAUDE.md'), 'utf8');
   equal(md.split(BLOCK_BEGIN).length - 1, 1, 'exactly one managed block');
   const s = readJson(join(home, '.claude', 'settings.json'));
-  equal(s.hooks.PreToolUse.filter((e) => e._managedBy === MARKER).length, 2, 'still exactly two managed hooks');
+  equal(s.hooks.PreToolUse.filter((e) => e._managedBy === MARKER).length, 2, 'still exactly two managed gate hooks');
+  equal(s.hooks.PostToolUse.filter((e) => e._managedBy === MARKER).length, 1, 'still exactly one cost display hook');
 });
 
 test('uninstall removes only ours and restores user content', () => {
@@ -90,6 +92,7 @@ test('uninstall removes only ours and restores user content', () => {
   const s = readJson(join(home, '.claude', 'settings.json'));
   ok(s.hooks.PreToolUse.some((e) => e.matcher === 'Bash'), 'user hook still there');
   equal(s.hooks.PreToolUse.filter((e) => e._managedBy === MARKER).length, 0, 'managed hooks gone');
+  equal(s.hooks.PostToolUse, undefined, 'cost display hook gone, empty array cleaned up');
 
   const m = readJson(join(home, '.claude', 'mcp.json'));
   ok(!m.mcpServers || !('deepseek' in m.mcpServers), 'mcp entry removed');
