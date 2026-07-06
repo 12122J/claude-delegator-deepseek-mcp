@@ -7,8 +7,11 @@
 import { describe, it, before, after } from 'node:test';
 import { spawn } from 'node:child_process';
 import { deepStrictEqual, ok } from 'node:assert';
+import { fileURLToPath } from 'node:url';
 
-const SERVER_SCRIPT = new URL('../src/index.mjs', import.meta.url).pathname;
+// fileURLToPath, not .pathname — .pathname percent-encodes spaces in the repo
+// path (e.g. "desktop 1" → "desktop%201") and the spawned server never starts.
+const SERVER_SCRIPT = fileURLToPath(new URL('../src/index.mjs', import.meta.url));
 const TIMEOUT = 5000;
 
 // ---------------------------------------------------------------------------
