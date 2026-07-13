@@ -270,7 +270,7 @@ npx claude-code-deepseek-delegator <command>
 
 **Can I use two providers at once?** Yes — select both in the wizard's provider step (space toggles) and give each its key in the same run; the Custom and Shortlist menus then mix their models. Under the hood routing values and shortlist entries are `provider:model` specs, keys live as a keyring in the MCP env block (surviving re-runs and provider switches), and `doctor` verifies every referenced provider's key.
 
-**Why is the package still called *deepseek*-delegator if it's model-agnostic?** 12k installs a month depend on the npm name and the v2 tool alias. The engine is agnostic; the packaging keeps its name so nobody's setup breaks. (The MCP server itself registers as `delegate` since 3.0.)
+**Why is the package still called *deepseek*-delegator if it's model-agnostic?** it was initially only for deepseek. 12k installs a month depend on the npm name and the v2 tool alias. The engine is agnostic; the packaging keeps its name so nobody's setup breaks. (The MCP server itself registers as `delegate` since 3.0.)
 
 ## License
 
