@@ -16,6 +16,8 @@ export { claudeDir, paths } from '../paths.mjs';
 
 export const PKG_NAME = 'claude-code-deepseek-delegator';
 export const MARKER = 'claude-code-deepseek-delegator';
+export const REPO_URL = 'https://github.com/12122J/claude-delegator-deepseek-mcp';
+export const AUTHOR = 'Javi (@12122J)';
 
 // Sentinels that fence our managed block inside CLAUDE.md. We only ever touch
 // text between these two lines.

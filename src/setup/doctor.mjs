@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { paths, readJsonSafe, hasBlock, MARKER, PKG_NAME } from './wiring.mjs';
+import { paths, readJsonSafe, hasBlock, MARKER, PKG_NAME, REPO_URL } from './wiring.mjs';
 import { getProvider, resolveApiKey, keyEnvVar, resolveModel } from '../providers/registry.mjs';
 import { loadConfig, TASKS } from '../config.mjs';
 import { intro, outro, bar } from './tui.mjs';
@@ -119,7 +119,10 @@ export async function runDoctor() {
   }
   bar();
   if (allGreen) {
-    outro(`${color('green', 'All green.')} The delegation gate is wired and firing. ${dim('Restart Claude Code if you have not since installing.')}`);
+    outro([
+      `${color('green', 'All green.')} The delegation gate is wired and firing. ${dim('Restart Claude Code if you have not since installing.')}`,
+      dim(`★ saving money with this? star it → ${REPO_URL}`),
+    ]);
     return 0;
   }
   outro(`${color('yellow', 'Some checks failed')} ${dim('(see → hints above). Fix them and re-run doctor.')}`);
