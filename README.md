@@ -28,7 +28,7 @@ Every call ends with a receipt — shown to you automatically, straight from the
 ## What's new in 3.0
 
 - **Any model, not just DeepSeek.** 8 providers vendored (DeepSeek, Moonshot/Kimi, Z.AI + Zhipu/GLM, Alibaba/Qwen, Groq, xAI/Grok, OpenRouter) plus any OpenAI-compatible endpoint you add — including local ollama/vllm for **$0 delegation**.
-- **Mix and match providers.** Route digestion to GLM-flash, code generation to DeepSeek-pro, keep a Kimi in your shortlist — the wizard offers every provider it finds a key for, and your keys are kept as a keyring across re-runs.
+- **Mix and match providers.** Select several providers in one init (space in the picker), give each its key, then route digestion to GLM-flash, code generation to DeepSeek-pro, keep a Kimi in your shortlist. Keys live in a keyring that survives re-runs and provider switches.
 - **A setup wizard that's actually nice.** Arrow-key rail UI, live API-key validation against the real endpoint, full disclosure before anything is written, one question for model strategy.
 - **Pick the model your way.** Smart split (cheap model digests, big model creates), a shortlist picker rendered by Claude Code's own UI, always-best, always-cheapest, or fully custom per kind of work.
 - **Honest receipts.** Cost per call from the provider's own token counts, cached tokens billed at cached rates, savings baseline of your choice (Opus, Sonnet, or off).
@@ -44,8 +44,8 @@ npx claude-code-deepseek-delegator init
 
 The wizard walks you through four choices — arrow keys, ~1 minute:
 
-1. **Provider** — DeepSeek, Moonshot (Kimi), Z.AI / Zhipu (GLM), Alibaba (Qwen), Groq, xAI (Grok), OpenRouter, or any custom OpenAI-compatible endpoint (ollama, vllm, LM Studio, a proxy).
-2. **API key** — detected from your environment, or paste it (hidden). The wizard **live-fires a 1-token request** so a bad key fails right there with the provider's real error, not on tomorrow's first delegation.
+1. **Providers** — DeepSeek, Moonshot (Kimi), Z.AI / Zhipu (GLM), Alibaba (Qwen), Groq, xAI (Grok), OpenRouter, or any custom OpenAI-compatible endpoint (ollama, vllm, LM Studio, a proxy). Enter picks one; **space picks several** — enroll DeepSeek *and* Z.AI in the same run and mix them in step 3 (the first becomes the primary that names the gate).
+2. **API keys** — one per chosen provider: detected from your environment, or paste it (hidden). The wizard **live-fires a 1-token request** so a bad key fails right there with the provider's real error, not on tomorrow's first delegation.
 3. **Which model runs your delegations** — a smart split (the cheap model digests, the big one creates), a shortlist you pick from each time, always best / always cheapest, or custom (see below).
 4. **Savings baseline** — measure savings against Opus 4.8, Sonnet 5, or don't show savings.
 
@@ -236,8 +236,9 @@ npx claude-code-deepseek-delegator <command>
   --version      Print version
 
   init flags:  --dry-run · --no-hooks · --yes ·
-               --provider <id> · --key <key> · --preset balanced|cheapest|max ·
-               --mode auto|ask · --baseline opus|sonnet|none
+               --provider <id[,id…]> (first is primary) · --key <key> ·
+               --preset balanced|cheapest|max · --mode auto|ask ·
+               --baseline opus|sonnet|none
 ```
 
 ## Environment variables
@@ -267,7 +268,7 @@ npx claude-code-deepseek-delegator <command>
 
 **Is my key safe?** Use the env-var reference and it's never written to disk. Or paste the literal key if you prefer.
 
-**Can I use two providers at once?** Yes. Routing values and shortlist entries accept `provider:model`, the wizard's Custom and Shortlist menus list every provider with a detected key, and re-running `init` for a new provider keeps your existing keys (they live as a keyring in the MCP env block). `doctor` verifies every referenced provider's key.
+**Can I use two providers at once?** Yes — select both in the wizard's provider step (space toggles) and give each its key in the same run; the Custom and Shortlist menus then mix their models. Under the hood routing values and shortlist entries are `provider:model` specs, keys live as a keyring in the MCP env block (surviving re-runs and provider switches), and `doctor` verifies every referenced provider's key.
 
 **Why is the package still called *deepseek*-delegator if it's model-agnostic?** 12k installs a month depend on the name, the MCP server key, and the tool alias. The engine is agnostic; the packaging keeps its name so nobody's setup breaks.
 

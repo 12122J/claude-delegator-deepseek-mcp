@@ -300,7 +300,7 @@ export function select(title, items, { initialIndex = 0 } = {}) {
  * items: [{ label, hint?, value }]. Resolves the array of chosen values in
  * list order. Non-TTY: resolves initialSelected values (or the first item).
  */
-export function multiselect(title, items, { initialSelected = [] } = {}) {
+export function multiselect(title, items, { initialSelected = [], emptyTakesHighlighted = false } = {}) {
   const preset = items.filter((it) => initialSelected.includes(it.value)).map((it) => it.value);
   if (!isInteractive()) return Promise.resolve(preset.length ? preset : [items[0].value]);
 
@@ -357,6 +357,9 @@ export function multiselect(title, items, { initialSelected = [] } = {}) {
         render();
       }
       else if (key === '\r' || key === '\n') {
+        // enter on an untouched list picks the highlighted row — the single-
+        // choice flow stays one keystroke, space is only for adding more
+        if (picked.size === 0 && emptyTakesHighlighted) picked.add(items[index].value);
         if (picked.size === 0) render('pick at least one');
         else finish(true);
       }

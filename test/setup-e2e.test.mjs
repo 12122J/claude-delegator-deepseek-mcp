@@ -130,6 +130,16 @@ test('switching providers keeps the previous provider key (the keyring bug)', ()
   equal(env2.MOONSHOT_API_KEY, 'sk-moon-test', 'stored key reused on re-init');
 });
 
+test('--provider accepts a comma list; first is primary, all keys enroll', () => {
+  const home = setupHome();
+  run(home, ['init', '--yes', '--provider', 'deepseek,moonshot']);
+  const cfg = readJson(join(home, '.claude', 'delegator.json'));
+  equal(cfg.provider, 'deepseek', 'first listed provider is primary');
+  const env = readJson(join(home, '.claude', 'mcp.json')).mcpServers.deepseek.env;
+  equal(env.DEEPSEEK_API_KEY, '${DEEPSEEK_API_KEY}', 'primary key enrolled (env-ref)');
+  ok(!('MOONSHOT_API_KEY' in env), 'no moonshot key available ⇒ nothing stored, no placeholder');
+});
+
 test('malformed settings.json is never overwritten', () => {
   const home = setupHome();
   const settings = join(home, '.claude', 'settings.json');

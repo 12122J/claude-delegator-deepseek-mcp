@@ -214,15 +214,18 @@ export { storedMcpEnv } from '../providers/registry.mjs';
 //
 // The env block is a KEYRING, not a single slot: switching providers must
 // never lose the previous provider's key (that's what makes cross-provider
-// routing work, and re-running init used to wipe it). `existingEnv` is the
-// env block of the current entry; every *_API_KEY in it survives, the new
-// value wins for its own variable, placeholders are dropped.
-export function mcpEntry(apiKeyValue, envVar = 'DEEPSEEK_API_KEY', existingEnv = {}) {
+// routing work, and re-running init used to wipe it). `newEnv` holds this
+// run's collected keys (one init can enroll several providers); `existingEnv`
+// is the current entry's env block — every *_API_KEY in it survives, new
+// values win for their own variables, placeholders are dropped.
+export function mcpEntry(newEnv = {}, existingEnv = {}) {
   const env = {};
   for (const [k, v] of Object.entries(existingEnv || {})) {
     if (/_API_KEY$/.test(k) && typeof v === 'string' && v && !v.includes('REPLACE')) env[k] = v;
   }
-  if (envVar && apiKeyValue) env[envVar] = apiKeyValue;
+  for (const [k, v] of Object.entries(newEnv || {})) {
+    if (k && typeof v === 'string' && v) env[k] = v;
+  }
   const entry = { command: 'npx', args: ['-y', PKG_NAME] };
   if (Object.keys(env).length) entry.env = env;
   return entry;

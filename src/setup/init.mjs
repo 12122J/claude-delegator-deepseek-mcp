@@ -63,7 +63,7 @@ function priceHint(m) {
 // the flagship + budget model of every OTHER provider whose key is detected,
 // as "provider:model" specs — routing and shortlists accept both. Exported
 // for tests.
-export function buildModelChoices(activeId) {
+export function buildModelChoices(activeId, enrolledIds = new Set()) {
   const items = [];
   const providers = listProviders();
   const active = providers.find((p) => p.id === activeId);
@@ -75,7 +75,9 @@ export function buildModelChoices(activeId) {
     });
   }
   for (const p of providers) {
-    if (p.id === activeId || !p.available) continue;
+    // enrolledIds: providers whose key was collected THIS run (not yet in the
+    // keyring, which is only written at apply time)
+    if (p.id === activeId || !(p.available || enrolledIds.has(p.id))) continue;
     for (const mid of new Set([p.default_small_model_id, p.default_large_model_id])) {
       const m = findModel(p, mid);
       if (!m) continue;
@@ -112,17 +114,28 @@ function wireMcpViaFile(p, entry, dryRun) {
 
 // ── wizard steps ───────────────────────────────────────────────────────────
 
-async function chooseProvider({ interactive, flagProvider, p, dryRun, notes }) {
+// Providers step: pick one with a bare enter, or several with space — one
+// init run can enroll multiple providers (a key each) so mixing works
+// immediately. Returns { providers, primary } — primary names the gate and
+// sets the default models.
+async function chooseProviders({ interactive, flagProvider, p, dryRun, notes }) {
   if (flagProvider) {
-    const provider = getProvider(flagProvider);
-    if (!provider) {
-      stepFail('Provider', `unknown "${flagProvider}" — available: ${listProviders().map((x) => x.id).join(', ')}`);
-      return null;
+    const chosen = [];
+    for (const id of flagProvider.split(',').map((s) => s.trim()).filter(Boolean)) {
+      const provider = getProvider(id);
+      if (!provider) {
+        stepFail('Providers', `unknown "${id}" — available: ${listProviders().map((x) => x.id).join(', ')}`);
+        return null;
+      }
+      chosen.push(provider);
     }
-    if (interactive) stepDone('Provider', provider.name);
-    return provider;
+    if (interactive) stepDone('Providers', chosen.map((c) => c.name).join(' · '));
+    return { providers: chosen, primary: chosen[0] };
   }
-  if (!interactive) return getProvider('deepseek');
+  if (!interactive) {
+    const ds = getProvider('deepseek');
+    return { providers: [ds], primary: ds };
+  }
 
   // Familiar names first, not alphabetical file order.
   const ORDER = ['deepseek', 'moonshot', 'zai', 'zhipu', 'alibaba-singapore', 'groq', 'xai', 'openrouter'];
@@ -138,11 +151,28 @@ async function chooseProvider({ interactive, flagProvider, p, dryRun, notes }) {
   });
   items.push({ label: 'Custom OpenAI-compatible endpoint…', hint: 'ollama, vllm, LM Studio, a proxy', value: '__custom__' });
 
-  const firstWithKey = providers.findIndex((prov) => prov.available);
-  const initialIndex = firstWithKey !== -1 ? firstWithKey : Math.max(0, providers.findIndex((prov) => prov.id === 'deepseek'));
-  const chosen = await select('Provider', items, { initialIndex });
-  if (chosen !== '__custom__') return getProvider(chosen);
-  return customProviderFlow({ p, dryRun, notes });
+  const picked = await multiselect('Providers  ' + dim('(enter picks one · space adds more to mix)'), items, {
+    emptyTakesHighlighted: true,
+  });
+
+  const chosen = [];
+  for (const id of picked) {
+    if (id === '__custom__') {
+      const custom = await customProviderFlow({ p, dryRun, notes });
+      if (custom) chosen.push(custom);
+    } else {
+      chosen.push(getProvider(id));
+    }
+  }
+  if (chosen.length === 0) return null;
+
+  let primary = chosen[0];
+  if (chosen.length > 1) {
+    const pid = await select('Primary provider  ' + dim('(names the gate, sets the default models)'),
+      chosen.map((c) => ({ label: c.name, value: c.id })));
+    primary = chosen.find((c) => c.id === pid) || chosen[0];
+  }
+  return { providers: chosen, primary };
 }
 
 async function customProviderFlow({ p, dryRun, notes }) {
@@ -188,22 +218,22 @@ async function customProviderFlow({ p, dryRun, notes }) {
 // like a shell env var, and env-ref mode would then write a broken ${VAR}
 // self-reference into the config):
 //   flag > shell env (env-ref) > provider-entry literal > keyring > paste
-async function resolveKey({ provider, interactive, flagKey }) {
+async function resolveKey({ provider, interactive, flagKey, label = 'API key' }) {
   const envVar = keyEnvVar(provider);
   if (flagKey) return { value: flagKey, mode: 'literal', envVar };
   if (envVar && process.env[envVar]) {
-    if (interactive) stepDone('API key', `${color('green', `${envVar} detected ✓`)}`);
+    if (interactive) stepDone(label, `${color('green', `${envVar} detected ✓`)}`);
     return { value: `\${${envVar}}`, mode: 'env-ref', envVar };
   }
   if (!envVar && provider.api_key) {
-    if (interactive) stepDone('API key', `${color('green', 'saved with the provider ✓')}`);
+    if (interactive) stepDone(label, `${color('green', 'saved with the provider ✓')}`);
     return { value: provider.api_key, mode: 'literal', envVar }; // custom provider, literal key in its entry
   }
   // a key pasted in an earlier init lives in the MCP env block — reuse it
   // (live validation still runs) instead of demanding a re-paste
   const stored = envVar ? storedMcpEnv()[envVar] : null;
   if (stored) {
-    if (interactive) stepDone('API key', `${color('green', `${envVar} found in your MCP config ✓`)}`);
+    if (interactive) stepDone(label, `${color('green', `${envVar} found in your MCP config ✓`)}`);
     return { value: stored, mode: 'literal', envVar };
   }
   if (interactive) {
@@ -243,11 +273,11 @@ async function validateKey({ provider, key, interactive, notes }) {
   return key;
 }
 
-async function chooseShortlist({ provider, interactive }) {
+async function chooseShortlist({ provider, interactive, enrolledIds = new Set() }) {
   const large = provider.default_large_model_id;
   const small = provider.default_small_model_id || large;
   if (!interactive) return [...new Set([large, small])];
-  const items = buildModelChoices(provider.id);
+  const items = buildModelChoices(provider.id, enrolledIds);
   bar(dim('These become the options Claude offers when it asks "Delegate to which model?".'));
   if (items.some((it) => it.value.includes(':'))) {
     bar(dim('Models from every provider with a detected key are listed — mix freely.'));
@@ -261,7 +291,7 @@ async function chooseShortlist({ provider, interactive }) {
 // `others` = providers beyond the active one that have a usable key: when
 // present, Custom and Ask can mix them, and the wizard must SAY so — mixing
 // that exists but is invisible does not exist.
-async function choosePicking({ provider, interactive, flagMode, flagPreset, others = [] }) {
+async function choosePicking({ provider, interactive, flagMode, flagPreset, others = [], enrolledIds = new Set() }) {
   const TITLE = 'Which model runs your delegations?';
   const large = provider.default_large_model_id;
   const small = provider.default_small_model_id || large;
@@ -313,7 +343,7 @@ async function choosePicking({ provider, interactive, flagMode, flagPreset, othe
   if (choice !== 'custom') return { mode: 'auto', routing: presets[choice] };
 
   const routing = {};
-  const items = buildModelChoices(provider.id);
+  const items = buildModelChoices(provider.id, enrolledIds);
   if (items.some((it) => it.value.includes(':'))) {
     bar(dim('Models from every provider with a detected key are listed — mix freely.'));
   }
@@ -378,25 +408,37 @@ async function wizard(argv) {
     'delegate heavy work from Claude Code to a cheaper model · ~1 minute'
   );
 
-  // 1) provider
-  const provider = await chooseProvider({ interactive, flagProvider, p, dryRun, notes });
-  if (!provider) return 1;
+  // 1) providers (one or several) + which one is primary
+  const sel = await chooseProviders({ interactive, flagProvider, p, dryRun, notes });
+  if (!sel) return 1;
+  const { providers: chosenProviders, primary: provider } = sel;
 
-  // 2) API key (+ live validation when interactive)
-  let key = await resolveKey({ provider, interactive, flagKey });
-  if (interactive && !dryRun && key.mode !== 'placeholder') {
-    key = await validateKey({ provider, key, interactive, notes });
+  // 2) one API key per enrolled provider (+ live validation when interactive)
+  const newKeys = {};
+  let key = null; // the primary's key drives the messaging below
+  for (const prov of chosenProviders) {
+    const label = chosenProviders.length > 1 ? `API key — ${prov.name}` : 'API key';
+    let k = await resolveKey({ provider: prov, interactive, flagKey: prov.id === provider.id ? flagKey : null, label });
+    if (interactive && !dryRun && k.mode !== 'placeholder') {
+      k = await validateKey({ provider: prov, key: k, interactive, notes });
+    }
+    if (k.envVar && k.mode !== 'placeholder') newKeys[k.envVar] = k.value;
+    if (k.mode === 'placeholder' && prov.id !== provider.id) {
+      notes.push(`No key for ${prov.name} — its models will 401 until you set ${k.envVar} or re-run init.`);
+    }
+    if (prov.id === provider.id) key = k;
   }
 
   // 3) which model runs delegations (one question; "ask" adds a shortlist).
-  // A key pasted this run isn't in env/keyring yet, so the OTHER providers'
-  // availability is what listProviders can see right now.
-  const others = listProviders().filter((x) => x.id !== provider.id && x.available);
-  const picked = await choosePicking({ provider, interactive, flagMode, flagPreset, others });
+  // Keys collected this run aren't in the keyring yet (written at apply), so
+  // enrolled providers are passed alongside env/keyring availability.
+  const enrolledIds = new Set(chosenProviders.map((x) => x.id));
+  const others = listProviders().filter((x) => x.id !== provider.id && (x.available || enrolledIds.has(x.id)));
+  const picked = await choosePicking({ provider, interactive, flagMode, flagPreset, others, enrolledIds });
   if (!picked) return 1;
   const { mode, routing } = picked;
   let shortlist = [];
-  if (mode === 'ask') shortlist = await chooseShortlist({ provider, interactive });
+  if (mode === 'ask') shortlist = await chooseShortlist({ provider, interactive, enrolledIds });
   const baseline = await chooseBaseline({ interactive, flagBaseline });
   if (!baseline) return 1;
 
@@ -442,14 +484,15 @@ async function wizard(argv) {
   applied(OK, 'config', `${dryRun ? 'would write' : 'wrote'} provider/routing/baseline  ${dim('(' + p.delegatorJson + ')')}`);
 
   // MCP server registration — preserve keys from earlier setups (the env
-  // block is a keyring; switching providers must not lose the old key)
+  // block is a keyring; switching providers must not lose the old key).
+  // Custom providers keep their literal key in the provider entry itself, so
+  // they contribute nothing to newKeys.
   const existingEnv = {
     ...(readJsonSafe(p.claudeJson).data?.mcpServers?.deepseek?.env || {}),
     ...(readJsonSafe(p.legacyMcpJson).data?.mcpServers?.deepseek?.env || {}),
   };
-  // custom providers keep their literal key in the provider entry itself
-  const entry = mcpEntry(key.envVar ? key.value : null, key.envVar, existingEnv);
-  const keptKeys = Object.keys(entry.env || {}).filter((k) => k !== key.envVar);
+  const entry = mcpEntry(newKeys, existingEnv);
+  const keptKeys = Object.keys(entry.env || {}).filter((k) => !(k in newKeys));
   if (keptKeys.length) notes.push(`Kept existing key(s) in the MCP env block: ${keptKeys.join(', ')} — cross-provider routing needs them.`);
   let mcp;
   if (cliAvailable()) {
@@ -521,7 +564,9 @@ async function wizard(argv) {
   }
 
   panel([
-    `${bold('provider')}   ${provider.name} ${dim('(' + provider.id + ')')}`,
+    chosenProviders.length > 1
+      ? `${bold('providers')}  ${provider.name} ${dim('(primary)')} · ${chosenProviders.filter((x) => x.id !== provider.id).map((x) => x.name).join(' · ')}`
+      : `${bold('provider')}   ${provider.name} ${dim('(' + provider.id + ')')}`,
     ...(mode === 'ask'
       ? [`${bold('picker')}     ask each time ${dim('· ' + shortlist.join(' · '))}`]
       : [
