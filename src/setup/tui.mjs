@@ -57,6 +57,9 @@ function fitWidth(s) {
   return res + `…${CSI}0m`;
 }
 
+// Longest list a picker renders before it starts scrolling
+const MAX_VISIBLE = 10;
+
 // Rail glyphs
 const BAR = dim('│');
 const S_ACTIVE = color('cyan', '◆');
@@ -240,6 +243,7 @@ export function select(title, items, { initialIndex = 0 } = {}) {
 
   return new Promise((resolve, reject) => {
     let index = clamp(initialIndex);
+    let offset = 0;
     let rendered = 0;
 
     const line = (item, active) => {
@@ -250,9 +254,17 @@ export function select(title, items, { initialIndex = 0 } = {}) {
 
     const render = () => {
       if (rendered) out(`${CSI}${rendered}A`);
+      // viewport: long mixed-provider lists scroll instead of overflowing the
+      // terminal (which would break the repaint cursor math)
+      if (index < offset) offset = index;
+      if (index >= offset + MAX_VISIBLE) offset = index - MAX_VISIBLE + 1;
+      const windowed = items.slice(offset, offset + MAX_VISIBLE);
+      const below = items.length - offset - windowed.length;
       const lines = [
         `${S_ACTIVE}  ${bold(title)}  ${dim('↑↓ · enter')}`,
-        ...items.map((it, i) => line(it, i === index)),
+        ...(items.length > MAX_VISIBLE ? [`${BAR}  ${dim(offset ? `↑ ${offset} more` : ' ')}`] : []),
+        ...windowed.map((it, j) => line(it, offset + j === index)),
+        ...(items.length > MAX_VISIBLE ? [`${BAR}  ${dim(below ? `↓ ${below} more` : ' ')}`] : []),
       ];
       out(lines.map((l) => `\r${CSI}2K${fitWidth(l)}`).join('\n') + '\n');
       rendered = lines.length;
@@ -294,6 +306,7 @@ export function multiselect(title, items, { initialSelected = [] } = {}) {
 
   return new Promise((resolve, reject) => {
     let index = 0;
+    let offset = 0;
     const picked = new Set(preset);
     let rendered = 0;
 
@@ -305,9 +318,15 @@ export function multiselect(title, items, { initialSelected = [] } = {}) {
 
     const render = (warn = '') => {
       if (rendered) out(`${CSI}${rendered}A`);
+      if (index < offset) offset = index;
+      if (index >= offset + MAX_VISIBLE) offset = index - MAX_VISIBLE + 1;
+      const windowed = items.slice(offset, offset + MAX_VISIBLE);
+      const below = items.length - offset - windowed.length;
       const lines = [
         `${S_ACTIVE}  ${bold(title)}  ${dim('space toggle · enter confirm')}${warn ? '  ' + color('yellow', warn) : ''}`,
-        ...items.map((it, i) => line(it, i === index)),
+        ...(items.length > MAX_VISIBLE ? [`${BAR}  ${dim(offset ? `↑ ${offset} more` : ' ')}`] : []),
+        ...windowed.map((it, j) => line(it, offset + j === index)),
+        ...(items.length > MAX_VISIBLE ? [`${BAR}  ${dim(below ? `↓ ${below} more` : ' ')}`] : []),
       ];
       out(lines.map((l) => `\r${CSI}2K${fitWidth(l)}`).join('\n') + '\n');
       rendered = lines.length;

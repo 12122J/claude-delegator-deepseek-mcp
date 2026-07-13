@@ -59,6 +59,36 @@ function priceHint(m) {
   return `$${m.cost_per_1m_in ?? 0}/$${m.cost_per_1m_out ?? 0} per 1M`;
 }
 
+// The mix-and-match menu: every model of the active provider (bare ids), then
+// the flagship + budget model of every OTHER provider whose key is detected,
+// as "provider:model" specs — routing and shortlists accept both. Exported
+// for tests.
+export function buildModelChoices(activeId) {
+  const items = [];
+  const providers = listProviders();
+  const active = providers.find((p) => p.id === activeId);
+  for (const m of active?.models ?? []) {
+    items.push({
+      label: m.id,
+      hint: `${((m.context_window ?? 0) / 1024).toFixed(0)}K ctx · ${priceHint(m)}`,
+      value: m.id,
+    });
+  }
+  for (const p of providers) {
+    if (p.id === activeId || !p.available) continue;
+    for (const mid of new Set([p.default_small_model_id, p.default_large_model_id])) {
+      const m = findModel(p, mid);
+      if (!m) continue;
+      items.push({
+        label: `${p.id}:${m.id}`,
+        hint: `${p.name} · ${priceHint(m)}`,
+        value: `${p.id}:${m.id}`,
+      });
+    }
+  }
+  return items;
+}
+
 function wireMcpViaCli(entry) {
   // remove-then-add keeps it idempotent and ensures the latest config sticks
   spawnSync('claude', ['mcp', 'remove', 'deepseek', '--scope', 'user'], { stdio: 'ignore' });
@@ -202,14 +232,12 @@ async function validateKey({ provider, key, interactive, notes }) {
 async function chooseShortlist({ provider, interactive }) {
   const large = provider.default_large_model_id;
   const small = provider.default_small_model_id || large;
-  const items = provider.models.map((m) => ({
-    label: m.id,
-    hint: `${((m.context_window ?? 0) / 1024).toFixed(0)}K ctx · ${priceHint(m)}`,
-    value: m.id,
-  }));
   if (!interactive) return [...new Set([large, small])];
+  const items = buildModelChoices(provider.id);
   bar(dim('These become the options Claude offers when it asks "Delegate to which model?".'));
-  bar(dim('Cross-provider entries ("provider:model") can be added later in delegator.json.'));
+  if (items.some((it) => it.value.includes(':'))) {
+    bar(dim('Models from every provider with a detected key are listed — mix freely.'));
+  }
   return multiselect('Shortlist', items, { initialSelected: [...new Set([large, small])] });
 }
 
@@ -248,22 +276,21 @@ async function choosePicking({ provider, interactive, flagMode, flagPreset }) {
     { label: 'Ask me each time', hint: 'choose from a shortlist in Claude Code\'s picker', value: 'ask' },
     { label: 'Always the best', hint: `${large} for everything`, value: 'max' },
     { label: 'Always the cheapest', hint: `${small} for everything`, value: 'cheapest' },
-    { label: 'Custom…', hint: 'pick a model for each kind of work', value: 'custom' },
+    { label: 'Custom…', hint: 'a model per kind of work — mix providers', value: 'custom' },
   ], { initialIndex: 0 });
 
   if (choice === 'ask') return { mode: 'ask', routing: presets.balanced };
   if (choice !== 'custom') return { mode: 'auto', routing: presets[choice] };
 
   const routing = {};
-  const items = provider.models.map((m) => ({
-    label: m.id,
-    hint: `${((m.context_window ?? 0) / 1024).toFixed(0)}K ctx · ${priceHint(m)}`,
-    value: m.id,
-  }));
+  const items = buildModelChoices(provider.id);
+  if (items.some((it) => it.value.includes(':'))) {
+    bar(dim('Models from every provider with a detected key are listed — mix freely.'));
+  }
   const taskBlurb = { read: 'digest/summarize big inputs', write: 'generate code and docs', reason: 'math, logic, architecture' };
   for (const task of TASKS) {
     routing[task] = await select(`Model when the work is "${task}" — ${taskBlurb[task]}`, items, {
-      initialIndex: Math.max(0, provider.models.findIndex((m) => m.id === (task === 'read' ? small : large))),
+      initialIndex: Math.max(0, items.findIndex((it) => it.value === (task === 'read' ? small : large))),
     });
   }
   return { mode: 'auto', routing };
@@ -381,9 +408,16 @@ async function wizard(argv) {
   }
   applied(OK, 'config', `${dryRun ? 'would write' : 'wrote'} provider/routing/baseline  ${dim('(' + p.delegatorJson + ')')}`);
 
-  // MCP server registration
-  const entry = mcpEntry(key.value, key.envVar || 'DEEPSEEK_API_KEY');
-  if (!key.envVar && key.mode === 'literal') delete entry.env; // key lives in the provider entry itself
+  // MCP server registration — preserve keys from earlier setups (the env
+  // block is a keyring; switching providers must not lose the old key)
+  const existingEnv = {
+    ...(readJsonSafe(p.claudeJson).data?.mcpServers?.deepseek?.env || {}),
+    ...(readJsonSafe(p.legacyMcpJson).data?.mcpServers?.deepseek?.env || {}),
+  };
+  // custom providers keep their literal key in the provider entry itself
+  const entry = mcpEntry(key.envVar ? key.value : null, key.envVar, existingEnv);
+  const keptKeys = Object.keys(entry.env || {}).filter((k) => k !== key.envVar);
+  if (keptKeys.length) notes.push(`Kept existing key(s) in the MCP env block: ${keptKeys.join(', ')} — cross-provider routing needs them.`);
   let mcp;
   if (cliAvailable()) {
     mcp = dryRun

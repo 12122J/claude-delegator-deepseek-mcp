@@ -49,19 +49,24 @@ export async function runDoctor() {
   const provider = getProvider(cfg.provider);
   add(!!provider, `Active provider "${cfg.provider}" exists in the registry`, `Run: npx ${PKG_NAME} init`);
   if (provider) {
-    for (const task of TASKS) {
-      let ok = true; let why = '';
-      try { resolveModel(cfg.routing[task], cfg.provider); } catch (e) { ok = false; why = e.message; }
-      add(ok, `Routing "${task}" → ${cfg.routing[task]} resolves`, why || 'Fix the model id in delegator.json.');
+    // every referenced provider (routing may mix providers) needs its own key
+    const referenced = new Map([[provider.id, provider]]);
+    const checkSpec = (kind, spec) => {
+      try {
+        const r = resolveModel(spec, cfg.provider);
+        referenced.set(r.provider.id, r.provider);
+        add(true, `${kind} "${spec}" resolves${r.provider.id !== provider.id ? ` (${r.provider.name})` : ''}`, '');
+      } catch (e) {
+        add(false, `${kind} "${spec}" resolves`, e.message);
+      }
+    };
+    for (const task of TASKS) checkSpec(`Routing "${task}" →`, cfg.routing[task]);
+    for (const spec of cfg.shortlist) checkSpec('Shortlist', spec);
+    for (const p of referenced.values()) {
+      const envVar = keyEnvVar(p);
+      add(!!resolveApiKey(p), `${p.name} API key is set${envVar ? ` (${envVar})` : ''}`,
+        `Export ${envVar || 'the key'} in your shell profile, or re-run init.`);
     }
-    for (const spec of cfg.shortlist) {
-      let ok = true; let why = '';
-      try { resolveModel(spec, cfg.provider); } catch (e) { ok = false; why = e.message; }
-      add(ok, `Shortlist "${spec}" resolves`, why || 'Fix the entry in delegator.json.');
-    }
-    const envVar = keyEnvVar(provider);
-    add(!!resolveApiKey(provider), `${provider.name} API key is set${envVar ? ` (${envVar})` : ''}`,
-      `Export ${envVar || 'the key'} in your shell profile, or re-run init.`);
   }
 
   // 3) MCP server registered (CLI-authoritative, with file fallback check)

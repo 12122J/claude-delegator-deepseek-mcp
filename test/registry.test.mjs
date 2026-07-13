@@ -10,6 +10,7 @@ import {
   loadProviders, listProviders, getProvider, resolveApiKey, keyEnvVar, resolveModel,
 } from '../src/providers/registry.mjs';
 import { loadConfig, DEFAULT_CONFIG } from '../src/config.mjs';
+import { buildModelChoices } from '../src/setup/init.mjs';
 
 function sandboxHome() {
   const home = mkdtempSync(join(tmpdir(), 'delg-reg-'));
@@ -115,6 +116,28 @@ test('a malformed user providers file is ignored, vendored providers survive', (
   writeFileSync(join(home, '.claude', 'delegator-providers.json'), '{ broken');
   const providers = loadProviders({ fresh: true });
   ok(providers.has('deepseek'), 'vendored registry unaffected');
+});
+
+// ── mixed-provider model menu (wizard Custom + Shortlist) ───────────────────
+
+test('buildModelChoices mixes in providers with detected keys, as provider:model', () => {
+  const saved = {};
+  for (const k of Object.keys(process.env)) {
+    if (/_API_KEY$/.test(k)) { saved[k] = process.env[k]; delete process.env[k]; }
+  }
+  process.env.DEEPSEEK_API_KEY = 'sk-a';
+  process.env.MOONSHOT_API_KEY = 'sk-b';
+  try {
+    const items = buildModelChoices('deepseek');
+    ok(items.some((it) => it.value === 'deepseek-v4-pro'), 'active provider models are bare ids');
+    ok(items.some((it) => it.value.startsWith('moonshot:')), 'keyed provider mixed in as provider:model');
+    ok(!items.some((it) => it.value.startsWith('xai:')), 'providers without a key stay out');
+    const cross = items.find((it) => it.value.startsWith('moonshot:'));
+    ok(cross.hint.includes('Moonshot'), 'cross entries name their provider');
+  } finally {
+    for (const k of Object.keys(process.env)) { if (/_API_KEY$/.test(k)) delete process.env[k]; }
+    Object.assign(process.env, saved);
+  }
 });
 
 // ── config defaults (the v2 compat contract) ────────────────────────────────
