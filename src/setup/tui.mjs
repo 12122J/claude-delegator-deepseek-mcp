@@ -119,27 +119,108 @@ export function panel(lines, { title = '' } = {}) {
 
 // ── interactive widgets ────────────────────────────────────────────────────
 
+// ── key tokenizer ──────────────────────────────────────────────────────────
+// Raw-mode input is a byte stream, and pastes are the hard part:
+//  - terminals with bracketed paste on (zsh leaves it on) wrap pasted text in
+//    ESC[200~ … ESC[201~ — the wrapper must never leak into the value, and a
+//    paste may span multiple 'data' events
+//  - without bracketing, a paste arrives as one multi-char burst, often with
+//    a trailing newline that must NOT submit the field mid-paste
+// tokenize() turns chunks into events: single-key strings (chars and full CSI
+// sequences) and { paste } objects. Pure, so the paste handling is testable.
+
+const PASTE_ON = '\x1b[200~';
+const PASTE_OFF = '\x1b[201~';
+const CSI_RE = /^\x1b\[[0-9;?]*[ -/]*[@-~]/;
+
+export function tokenize(chunk, state = { carry: '', paste: null }) {
+  let s = state.carry + chunk;
+  const events = [];
+  const next = { carry: '', paste: state.paste };
+
+  while (s.length) {
+    if (next.paste !== null) {
+      const end = s.indexOf(PASTE_OFF);
+      if (end === -1) {
+        // keep a tail in carry in case PASTE_OFF is split across chunks
+        const keep = Math.max(0, s.length - PASTE_OFF.length + 1);
+        next.paste += s.slice(0, keep);
+        next.carry = s.slice(keep);
+        return { events, state: next };
+      }
+      events.push({ paste: next.paste + s.slice(0, end) });
+      next.paste = null;
+      s = s.slice(end + PASTE_OFF.length);
+      continue;
+    }
+
+    if (s[0] === '\x1b') {
+      if (s.startsWith(PASTE_ON)) {
+        next.paste = '';
+        s = s.slice(PASTE_ON.length);
+        continue;
+      }
+      const m = CSI_RE.exec(s);
+      if (m) {
+        events.push(m[0]);
+        s = s.slice(m[0].length);
+        continue;
+      }
+      if (s.length < PASTE_ON.length && /^\x1b(\[[0-9;?]*)?$/.test(s)) {
+        next.carry = s; // incomplete sequence — wait for the next chunk
+        return { events, state: next };
+      }
+      events.push(s[0]);
+      s = s.slice(1);
+      continue;
+    }
+
+    // a run of plain chars: length 1 is a keypress; longer is an unbracketed
+    // paste, delivered whole so embedded newlines can't submit mid-paste
+    const run = /^[^\x1b]+/.exec(s)[0];
+    if (run.length === 1) events.push(run);
+    else events.push({ paste: run });
+    s = s.slice(run.length);
+  }
+  return { events, state: next };
+}
+
+// Sanitize pasted text for a single-line field: control chars (including the
+// newline a password manager appends) never belong in an API key.
+export function cleanPaste(text) {
+  return text.replace(/[\x00-\x1f\x7f]/g, '');
+}
+
 // Attach a raw-mode key listener; returns a detach function. The handler gets
-// one key (or escape sequence) at a time even when input arrives batched.
+// single keys (chars / full escape sequences) and { paste } objects.
 function onKeys(handler) {
   const stdin = process.stdin;
   const wasRaw = stdin.isRaw;
   stdin.setRawMode(true);
   stdin.resume();
+  out(`${CSI}?2004h`); // ask the terminal to bracket pastes
+  let state = { carry: '', paste: null };
+  let escTimer = null;
   const onData = (buf) => {
-    const s = buf.toString('utf8');
-    for (let i = 0; i < s.length;) {
-      if (s[i] === '\x1b' && s[i + 1] === '[' && s.length > i + 2) {
-        handler(s.slice(i, i + 3));
-        i += 3;
-      } else {
-        handler(s[i]);
-        i += 1;
-      }
+    clearTimeout(escTimer);
+    const res = tokenize(buf.toString('utf8'), state);
+    state = res.state;
+    for (const ev of res.events) handler(ev);
+    if (state.carry) {
+      // A lone ESC keypress parks in carry looking like a sequence prefix.
+      // If nothing follows within a beat, it WAS just ESC — deliver it.
+      escTimer = setTimeout(() => {
+        const flushed = state.carry;
+        state = { carry: '', paste: state.paste };
+        for (const ch of flushed) handler(ch);
+      }, 40);
+      escTimer.unref?.();
     }
   };
   stdin.on('data', onData);
   return () => {
+    clearTimeout(escTimer);
+    out(`${CSI}?2004l`);
     stdin.off('data', onData);
     if (!wasRaw) stdin.setRawMode(false);
     stdin.pause();
@@ -192,6 +273,7 @@ export function select(title, items, { initialIndex = 0 } = {}) {
 
     hideCursor();
     const detach = onKeys((key) => {
+      if (typeof key !== 'string') return; // pastes mean nothing in a select
       if (key === `${CSI}A` || key === 'k') { index = clamp(index - 1); render(); }
       else if (key === `${CSI}B` || key === 'j') { index = clamp(index + 1); render(); }
       else if (key === '\r' || key === '\n') finish(true, items[index].value);
@@ -247,6 +329,7 @@ export function multiselect(title, items, { initialSelected = [] } = {}) {
 
     hideCursor();
     const detach = onKeys((key) => {
+      if (typeof key !== 'string') return; // pastes mean nothing in a multiselect
       if (key === `${CSI}A` || key === 'k') { index = Math.max(0, index - 1); render(); }
       else if (key === `${CSI}B` || key === 'j') { index = Math.min(items.length - 1, index + 1); render(); }
       else if (key === ' ') {
@@ -298,7 +381,8 @@ export function input(title, { mask = false, placeholder = '', fallback = '' } =
     hideCursor();
     out('\n'); // room for the two-line widget; render() climbs back up
     const detach = onKeys((key) => {
-      if (key === '\r' || key === '\n') finish(true);
+      if (typeof key !== 'string') { value += cleanPaste(key.paste); render(); }
+      else if (key === '\r' || key === '\n') finish(true);
       else if (key === '\x03' || key === '\x1b') finish(false);
       else if (key === '\x7f' || key === '\b') { value = value.slice(0, -1); render(); }
       else if (key.length === 1 && key >= ' ') { value += key; render(); }
