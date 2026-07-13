@@ -95,9 +95,12 @@ export async function runUninstall(argv = []) {
   }
 
   // 4) delegation config files (v3) — ours entirely, so removed entirely
-  for (const [label, file] of [['config', p.delegatorJson], ['providers', p.providersJson]]) {
+  for (const [label, file, absent] of [
+    ['config', p.delegatorJson, 'not present'],
+    ['custom', p.providersJson, 'none defined (custom endpoints file)'],
+  ]) {
     if (!existsSync(file)) {
-      row(dim('•'), label, dim('not present'));
+      row(dim('•'), label, dim(absent));
       continue;
     }
     if (!dryRun) {

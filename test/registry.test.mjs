@@ -51,14 +51,45 @@ test('every vendored provider has the fields the engine relies on', () => {
 // ── key resolution ──────────────────────────────────────────────────────────
 
 test('resolveApiKey resolves $ENV references against the environment', () => {
+  sandboxHome(); // keep the real machine's keyring out of the null assertion
+  loadProviders({ fresh: true });
   const ds = getProvider('deepseek');
   equal(keyEnvVar(ds), 'DEEPSEEK_API_KEY');
   const prev = process.env.DEEPSEEK_API_KEY;
   process.env.DEEPSEEK_API_KEY = 'sk-reg-test';
   equal(resolveApiKey(ds), 'sk-reg-test');
   delete process.env.DEEPSEEK_API_KEY;
-  equal(resolveApiKey(ds), null, 'unset env ⇒ null');
+  equal(resolveApiKey(ds), null, 'unset env and empty keyring ⇒ null');
   if (prev !== undefined) process.env.DEEPSEEK_API_KEY = prev;
+});
+
+test('keyring: a stored key counts for EVERY provider, shell env still wins', () => {
+  const home = sandboxHome();
+  const saved = {};
+  for (const k of Object.keys(process.env)) {
+    if (/_API_KEY$/.test(k)) { saved[k] = process.env[k]; delete process.env[k]; }
+  }
+  try {
+    loadProviders({ fresh: true });
+    const vars = {};
+    for (const p of listProviders()) {
+      const v = keyEnvVar(p);
+      if (v) vars[v] = 'sk-stored-' + p.id;
+    }
+    writeFileSync(join(home, '.claude', 'mcp.json'), JSON.stringify({ mcpServers: { deepseek: { env: vars } } }));
+    loadProviders({ fresh: true });
+    for (const p of listProviders()) {
+      if (!keyEnvVar(p)) continue;
+      ok(p.available, `${p.id} is available via the stored keyring`);
+      equal(resolveApiKey(p), 'sk-stored-' + p.id, `${p.id} resolves its stored key`);
+    }
+    process.env.DEEPSEEK_API_KEY = 'sk-env-wins';
+    equal(resolveApiKey(getProvider('deepseek')), 'sk-env-wins', 'shell env beats the keyring');
+  } finally {
+    for (const k of Object.keys(process.env)) { if (/_API_KEY$/.test(k)) delete process.env[k]; }
+    Object.assign(process.env, saved);
+    loadProviders({ fresh: true });
+  }
 });
 
 test('resolveApiKey passes literal (non-$) keys through as-is', () => {
@@ -125,9 +156,11 @@ test('buildModelChoices mixes in providers with detected keys, as provider:model
   for (const k of Object.keys(process.env)) {
     if (/_API_KEY$/.test(k)) { saved[k] = process.env[k]; delete process.env[k]; }
   }
+  sandboxHome();
   process.env.DEEPSEEK_API_KEY = 'sk-a';
   process.env.MOONSHOT_API_KEY = 'sk-b';
   try {
+    loadProviders({ fresh: true });
     const items = buildModelChoices('deepseek');
     ok(items.some((it) => it.value === 'deepseek-v4-pro'), 'active provider models are bare ids');
     ok(items.some((it) => it.value.startsWith('moonshot:')), 'keyed provider mixed in as provider:model');

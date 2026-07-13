@@ -32,6 +32,7 @@ function loadUserProviders() {
 }
 
 export function loadProviders({ fresh = false } = {}) {
+  if (fresh) keyringCache = null;
   if (cache && !fresh) return cache;
   const providers = new Map();
   for (const f of readdirSync(CONFIG_DIR).filter((n) => n.endsWith('.json')).sort()) {
@@ -55,11 +56,44 @@ export function loadProviders({ fresh = false } = {}) {
   return providers;
 }
 
-// "$DEEPSEEK_API_KEY" → env lookup; a literal value (no "$") is used as-is.
+// Keys saved by init into the MCP entry's env block (the keyring), merged
+// from both stores: ~/.claude.json (claude CLI user scope) and the mcp.json
+// file fallback. Placeholders and ${VAR} self-references are excluded.
+// Cached alongside the provider cache; loadProviders({fresh}) resets it.
+let keyringCache = null;
+export function storedMcpEnv() {
+  if (keyringCache) return keyringCache;
+  const p = paths();
+  const merged = {};
+  for (const file of [p.claudeJson, p.legacyMcpJson]) {
+    try {
+      if (existsSync(file)) {
+        Object.assign(merged, JSON.parse(readFileSync(file, 'utf8'))?.mcpServers?.deepseek?.env || {});
+      }
+    } catch {
+      // a malformed config never takes key resolution down
+    }
+  }
+  const keys = {};
+  for (const [k, v] of Object.entries(merged)) {
+    if (/_API_KEY$/.test(k) && typeof v === 'string' && v && !v.includes('REPLACE') && !v.startsWith('${')) keys[k] = v;
+  }
+  keyringCache = keys;
+  return keys;
+}
+
+// "$DEEPSEEK_API_KEY" → the shell env wins, then the keyring stored in the
+// MCP config; a literal value (no "$") is used as-is. This is THE answer to
+// "can this provider be called right now" — everything (wizard hints, the
+// mix-and-match menus, doctor, the server itself) goes through here, so a
+// key saved for any provider counts everywhere.
 export function resolveApiKey(provider) {
   const ref = provider?.api_key;
   if (typeof ref !== 'string' || ref.length === 0) return null;
-  if (ref.startsWith('$')) return process.env[ref.slice(1)] || null;
+  if (ref.startsWith('$')) {
+    const envVar = ref.slice(1);
+    return process.env[envVar] || storedMcpEnv()[envVar] || null;
+  }
   return ref;
 }
 

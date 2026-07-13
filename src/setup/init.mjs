@@ -17,7 +17,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import {
   paths, backupFile, atomicWrite, readJsonSafe,
-  upsertBlock, addHooks, mcpEntry, managedRules,
+  upsertBlock, addHooks, mcpEntry, managedRules, storedMcpEnv,
   PKG_NAME, REPO_URL, AUTHOR,
 } from './wiring.mjs';
 import {
@@ -183,14 +183,28 @@ async function customProviderFlow({ p, dryRun, notes }) {
   return provider;
 }
 
+// Key provenance matters here, so this checks sources EXPLICITLY instead of
+// via resolveApiKey (whose keyring fallback would make a stored-only key look
+// like a shell env var, and env-ref mode would then write a broken ${VAR}
+// self-reference into the config):
+//   flag > shell env (env-ref) > provider-entry literal > keyring > paste
 async function resolveKey({ provider, interactive, flagKey }) {
   const envVar = keyEnvVar(provider);
   if (flagKey) return { value: flagKey, mode: 'literal', envVar };
-  if (resolveApiKey(provider)) {
-    if (interactive) stepDone('API key', `${color('green', envVar ? `${envVar} detected ✓` : 'saved with the provider ✓')}`);
-    return envVar
-      ? { value: `\${${envVar}}`, mode: 'env-ref', envVar }
-      : { value: provider.api_key, mode: 'literal', envVar }; // literal key stored in the provider entry
+  if (envVar && process.env[envVar]) {
+    if (interactive) stepDone('API key', `${color('green', `${envVar} detected ✓`)}`);
+    return { value: `\${${envVar}}`, mode: 'env-ref', envVar };
+  }
+  if (!envVar && provider.api_key) {
+    if (interactive) stepDone('API key', `${color('green', 'saved with the provider ✓')}`);
+    return { value: provider.api_key, mode: 'literal', envVar }; // custom provider, literal key in its entry
+  }
+  // a key pasted in an earlier init lives in the MCP env block — reuse it
+  // (live validation still runs) instead of demanding a re-paste
+  const stored = envVar ? storedMcpEnv()[envVar] : null;
+  if (stored) {
+    if (interactive) stepDone('API key', `${color('green', `${envVar} found in your MCP config ✓`)}`);
+    return { value: stored, mode: 'literal', envVar };
   }
   if (interactive) {
     bar(dim(`No ${envVar || 'API key'} found in your environment.`));

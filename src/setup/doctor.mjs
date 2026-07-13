@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { paths, readJsonSafe, hasBlock, MARKER, PKG_NAME, REPO_URL } from './wiring.mjs';
+import { paths, readJsonSafe, hasBlock, storedMcpEnv, MARKER, PKG_NAME, REPO_URL } from './wiring.mjs';
 import { getProvider, resolveApiKey, keyEnvVar, resolveModel } from '../providers/registry.mjs';
 import { loadConfig, TASKS } from '../config.mjs';
 import { intro, outro, bar } from './tui.mjs';
@@ -62,10 +62,14 @@ export async function runDoctor() {
     };
     for (const task of TASKS) checkSpec(`Routing "${task}" →`, cfg.routing[task]);
     for (const spec of cfg.shortlist) checkSpec('Shortlist', spec);
+    // resolveApiKey covers shell env AND the MCP-config keyring; the label
+    // says which one answered
     for (const p of referenced.values()) {
       const envVar = keyEnvVar(p);
-      add(!!resolveApiKey(p), `${p.name} API key is set${envVar ? ` (${envVar})` : ''}`,
-        `Export ${envVar || 'the key'} in your shell profile, or re-run init.`);
+      const inEnv = !!(envVar && process.env[envVar]);
+      add(!!resolveApiKey(p),
+        `${p.name} API key is set${envVar ? ` (${envVar}${!inEnv && storedMcpEnv()[envVar] ? ', in MCP config' : ''})` : ''}`,
+        `Export ${envVar || 'the key'} in your shell profile, or re-run init and paste it.`);
     }
   }
 

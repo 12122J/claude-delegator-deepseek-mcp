@@ -122,6 +122,12 @@ test('switching providers keeps the previous provider key (the keyring bug)', ()
   const env = readJson(mcp).mcpServers.deepseek.env;
   equal(env.MOONSHOT_API_KEY, 'sk-moon-test', 'new provider key saved');
   equal(env.DEEPSEEK_API_KEY, '${DEEPSEEK_API_KEY}', 'previous key NOT clobbered');
+
+  // 3rd init back to moonshot with NO key flag and no env var: the stored
+  // key must be reused, not lost to a placeholder
+  run(home, ['init', '--yes', '--provider', 'moonshot']);
+  const env2 = readJson(mcp).mcpServers.deepseek.env;
+  equal(env2.MOONSHOT_API_KEY, 'sk-moon-test', 'stored key reused on re-init');
 });
 
 test('malformed settings.json is never overwritten', () => {

@@ -204,6 +204,10 @@ export function removeHooks(settingsIn) {
   return settings;
 }
 
+// The keyring (keys saved in the MCP entry's env block) lives in the
+// registry so every "is this provider usable?" check shares one answer.
+export { storedMcpEnv } from '../providers/registry.mjs';
+
 // ── MCP server entry ─────────────────────────────────────────────────────
 // The server key stays "deepseek" in mcpServers regardless of provider —
 // renaming it would orphan every existing install's config entry.
