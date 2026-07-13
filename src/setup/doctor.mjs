@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { paths, readJsonSafe, hasBlock, storedMcpEnv, MARKER, PKG_NAME, REPO_URL } from './wiring.mjs';
+import { paths, readJsonSafe, hasBlock, storedMcpEnv, isManagedHook, PKG_NAME, REPO_URL } from './wiring.mjs';
 import { getProvider, resolveApiKey, keyEnvVar, resolveModel } from '../providers/registry.mjs';
 import { loadConfig, TASKS } from '../config.mjs';
 import { intro, outro, bar } from './tui.mjs';
@@ -90,8 +90,10 @@ export async function runDoctor() {
 
   // 5) Hooks present in settings.json
   const sres = readJsonSafe(p.settingsJson);
-  const installedHooks = sres.ok ? (sres.data?.hooks?.PreToolUse || []).filter((e) => e._managedBy === MARKER) : [];
-  const installedPostHooks = sres.ok ? (sres.data?.hooks?.PostToolUse || []).filter((e) => e._managedBy === MARKER) : [];
+  // signature-based: Claude Code strips the _managedBy tag when it rewrites
+  // settings.json, so the tag alone would report installed hooks as missing
+  const installedHooks = sres.ok ? (sres.data?.hooks?.PreToolUse || []).filter(isManagedHook) : [];
+  const installedPostHooks = sres.ok ? (sres.data?.hooks?.PostToolUse || []).filter(isManagedHook) : [];
   if (!sres.ok) add(false, 'settings.json is valid JSON', `Fix ${p.settingsJson} (it is currently malformed), then re-run init.`);
   add(installedHooks.length === 2, `PreToolUse hooks installed (found ${installedHooks.length}/2)`, `Run: npx ${PKG_NAME} init`);
   add(installedPostHooks.length === 1, `PostToolUse cost hook installed (found ${installedPostHooks.length}/1)`, `Run: npx ${PKG_NAME} init`);

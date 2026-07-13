@@ -168,13 +168,17 @@ export function removeBlock(text) {
 }
 
 // ── settings.json hooks ──────────────────────────────────────────────────
-function isOurs(entry) {
+// Is this hook entry one of ours? The _managedBy tag is the primary marker,
+// but Claude Code rewrites settings.json during sessions and strips unknown
+// fields — so the signature fallback is load-bearing, and EVERY consumer
+// (addHooks, removeHooks, doctor) must use this, never the tag directly.
+export function isManagedHook(entry) {
   if (entry && entry._managedBy === MARKER) return true;
-  // Defensive fallback: identify by our signature even if the tag was stripped.
   // The gate text names whatever provider the user chose, so match its shape.
   const cmds = (entry?.hooks || []).map((h) => h?.command || '').join('\n');
   return ((cmds.includes('Delegate to ') && cmds.includes('? (y/n)')) || cmds.includes('deepseek-cost:')) && cmds.includes('node -e');
 }
+const isOurs = isManagedHook;
 
 // Ensure settings contains exactly our managed hooks (idempotent), without
 // disturbing any other hooks the user has. Mutates and returns a copy.
