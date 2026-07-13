@@ -21,7 +21,7 @@ import {
   PKG_NAME, REPO_URL, AUTHOR,
 } from './wiring.mjs';
 import {
-  listProviders, getProvider, loadProviders, resolveApiKey, keyEnvVar, findModel,
+  listProviders, getProvider, loadProviders, resolveApiKey, keyEnvVar, findModel, resolveModel,
 } from '../providers/registry.mjs';
 import { saveConfig, TASKS } from '../config.mjs';
 import { callModel } from '../client.mjs';
@@ -443,9 +443,37 @@ async function wizard(argv) {
   if (!baseline) return 1;
 
   const shortlistDetailed = shortlist.map((spec) => {
-    const m = provider.models.find((x) => x.id === spec);
-    return { spec, hint: m ? priceHint(m) : '' };
+    try {
+      const r = resolveModel(spec, provider.id);
+      return { spec, hint: `${priceHint(r.model)} · ${r.provider.name}` };
+    } catch {
+      return { spec, hint: '' };
+    }
   });
+
+  // The gate must tell the truth about where work goes: derive it from the
+  // final routing (+ shortlist), not from the primary provider's name. One
+  // referenced provider → named gate; several → neutral gate, and the rules
+  // carry the routing table so Claude names the target per task.
+  const taskBlurbs = { read: 'digest/summarize big inputs', write: 'generate code and docs', reason: 'math, logic, architecture' };
+  const routingInfo = [];
+  for (const task of TASKS) {
+    try {
+      const r = resolveModel(routing[task], provider.id);
+      routingInfo.push({ task, model: r.model.id, provider: r.provider.name, blurb: taskBlurbs[task] });
+    } catch {
+      routingInfo.push({ task, model: routing[task], provider: '?', blurb: taskBlurbs[task] });
+    }
+  }
+  const referencedNames = [...new Set([
+    ...routingInfo.map((r) => r.provider).filter((n) => n !== '?'),
+    ...shortlistDetailed.map((s) => s.hint.split('· ')[1]).filter(Boolean),
+  ])];
+  const gateQuestion = referencedNames.length === 1
+    ? `Delegate to ${referencedNames[0]}? (y/n)`
+    : 'Delegate? (y/n)';
+  const readInfo = routingInfo.find((r) => r.task === 'read');
+  const readTarget = readInfo && readInfo.provider !== '?' ? `${readInfo.model} via ${readInfo.provider}` : '';
 
   // ── Full disclosure: show EXACTLY what will change, then ask. Nothing is
   //    written before this point (except a custom provider definition). ──
@@ -512,7 +540,11 @@ async function wizard(argv) {
 
   // CLAUDE.md rules
   const curMd = existsSync(p.claudeMd) ? readFileSync(p.claudeMd, 'utf8') : '';
-  const nextMd = upsertBlock(curMd, managedRules(provider.name, { shortlist: shortlistDetailed }));
+  const nextMd = upsertBlock(curMd, managedRules({
+    gateQuestion,
+    routingInfo: mode === 'ask' ? null : routingInfo,
+    shortlist: shortlistDetailed,
+  }));
   const mdChanged = nextMd !== curMd;
   if (mdChanged && !dryRun) {
     const bak = backupFile(p.claudeMd);
@@ -530,7 +562,7 @@ async function wizard(argv) {
       applied(NO, 'hooks', `${dim(p.settingsJson)} is not valid JSON — left untouched, hooks NOT installed`);
       notes.push(`Fix ${p.settingsJson} then re-run init to enable hard enforcement.`);
     } else {
-      const next = addHooks(res.data, provider.name);
+      const next = addHooks(res.data, { gateQuestion, readTarget });
       const changed = JSON.stringify(next) !== JSON.stringify(res.data);
       if (changed && !dryRun) {
         const bak = backupFile(p.settingsJson);
@@ -578,7 +610,7 @@ async function wizard(argv) {
   ], { title: color('green', '✓') + ' ' + bold('delegation is wired') });
   bar();
   outro([
-    `${color('green', 'Done.')} Restart Claude Code — heavy tasks will prompt ${bold(`"Delegate to ${provider.name}? (y/n)"`)}`,
+    `${color('green', 'Done.')} Restart Claude Code — heavy tasks will prompt ${bold(`"${gateQuestion}"`)}`,
     '',
     `${dim('try:')}      claude "use delegate to summarize README.md"`,
     `${dim('verify:')}   npx ${PKG_NAME} doctor`,

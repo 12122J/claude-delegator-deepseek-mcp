@@ -35,21 +35,41 @@ export function safeProviderName(name) {
   return cleaned || 'DeepSeek';
 }
 
-// opts.shortlist: [{ spec, hint }] — when present (ask mode), the rules have
-// Claude surface the choice through AskUserQuestion, which renders Claude
-// Code's native picker (the same UI as /model), instead of routing silently.
-export function managedRules(providerName = 'DeepSeek', opts = {}) {
-  const name = safeProviderName(providerName);
-  const yesBullet = Array.isArray(opts.shortlist) && opts.shortlist.length > 0
-    ? `- If the user says **y**: first ask which model with the AskUserQuestion tool (header "Delegate", one option per model below, its price as the description), then call the \`delegate\` tool with \`model\` set to the choice:
-${opts.shortlist.map((s) => `  - \`${s.spec}\`${s.hint ? ` — ${s.hint}` : ''}`).join('\n')}
+// The delegation rules written into CLAUDE.md. Everything user-visible at
+// delegation time is prescribed here, because whatever we don't specify,
+// Claude improvises (ugly and inconsistent next to init/doctor):
+//  - gateQuestion is derived from the ROUTING, not the primary provider — a
+//    gate that says "Delegate to Z.AI?" while routing sends reads to DeepSeek
+//    is a lie the user will catch on the first 402.
+//  - routingInfo prints the task table so Claude can name the true target in
+//    the scope line BEFORE asking.
+//  - the gate itself goes through AskUserQuestion (Claude Code's native
+//    picker) instead of free-form text.
+// Accepts a bare provider-name string for back-compat with v3.0 callers.
+export function managedRules(opts = {}) {
+  if (typeof opts === 'string') opts = { gateQuestion: `Delegate to ${safeProviderName(opts)}? (y/n)` };
+  const question = opts.gateQuestion || 'Delegate to DeepSeek? (y/n)';
+  const routingInfo = Array.isArray(opts.routingInfo) ? opts.routingInfo : null;
+  const shortlist = Array.isArray(opts.shortlist) ? opts.shortlist : [];
+
+  const routingSection = routingInfo
+    ? `Your routing (from \`~/.claude/delegator.json\` — the server enforces this; the table is here so you can NAME the true target):
+${routingInfo.map((r) => `- ${r.task} → \`${r.model}\` via ${r.provider}${r.blurb ? ` — ${r.blurb}` : ''}`).join('\n')}
+
+`
+    : '';
+
+  const yesBullet = shortlist.length > 0
+    ? `- If **Yes**: first ask which model with a second AskUserQuestion (header "Model", one option per entry below, its price as the description), then call the \`delegate\` tool with \`model\` set to the choice:
+${shortlist.map((s) => `  - \`${s.spec}\`${s.hint ? ` — ${s.hint}` : ''}`).join('\n')}
   Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.`
-    : `- If the user says **y**: call the \`delegate\` tool. Set \`task\` to "read" (summarize/analyze large inputs), "write" (generate code/docs), or "reason" (math, logic, architecture) so routing picks the right model. Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.`;
-  return `## Delegate heavy work to ${name}
+    : `- If **Yes**: call the \`delegate\` tool with \`task\` set to that same read/write/reason label. Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.`;
+
+  return `## Delegate heavy work
 
 _Added by \`${PKG_NAME} init\`. Safe to delete this whole block, or run \`npx ${PKG_NAME} uninstall\`._
 
-Before doing any of the following, STOP and ask the user, in these exact words: **"Delegate to ${name}? (y/n)"**
+${routingSection}Before doing any of the following, STOP and run the delegation gate:
 
 - reading or grepping more than ~300 lines total
 - writing or editing more than ~200 lines of code
@@ -57,14 +77,13 @@ Before doing any of the following, STOP and ask the user, in these exact words: 
 - reviewing 3+ files at once, or any task whose answer would exceed ~4k tokens
 - heavy reasoning (math, multi-step logic)
 
-Print a one-line scope estimate first, then the question. Example:
-\`\`\`
-> This analyzes ~800 lines across 4 files.
-> Delegate to ${name}? (y/n)
-\`\`\`
+The gate, exactly this shape (never free-form):
+1. Print ONE scope line in this format — task label and the true target${routingInfo ? ' from the routing table above' : ''}:
+   \`⎿ delegate · ~<lines> lines in <n> file(s) · <task> → <model> via <provider>\`
+2. Ask with the AskUserQuestion tool — header \`Delegate\`, question exactly **"${question}"**, two options: "Yes" (description: the model + provider that will run) and "No, do it in-context".
 
 ${yesBullet}
-- If the user says **n**: do it yourself.
+- If **No**: do it yourself.
 - Every \`delegate\` result ends with a cost footer. When you reply, surface its savings line to the user (cost, savings, tokens) — never silently drop it.`;
 }
 
@@ -77,9 +96,11 @@ export const MANAGED_RULES = managedRules();
 // runs on it), unlike `jq`, which macOS does not ship. The shell wraps the
 // script in single quotes, so the script itself uses only double quotes.
 // Tagged with _managedBy so uninstall removes exactly these.
-const readHookCmd = (name) => `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),f=i.tool_input&&i.tool_input.file_path;if(!f)return;const fs=require("fs");if(!fs.existsSync(f))return;const b=fs.readFileSync(f);if(b.includes(0))return;const n=b.toString("utf8").split("\\n").length;if(n>300){process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: "+f+" is "+n+" lines — large enough to crowd Claude context. Before reading it, ask the user exactly: \\"Delegate to ${name}? (y/n)\\". If yes, pass the path in files[] to the delegate tool so the bytes go straight to the delegate instead of being read into context."}}))}}catch(e){}})'`;
+// Hook nudges carry the gate question + (for reads) the true routed target,
+// so the deterministic layer says the same thing as the CLAUDE.md rules.
+const readHookCmd = (question, readTarget) => `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),f=i.tool_input&&i.tool_input.file_path;if(!f)return;const fs=require("fs");if(!fs.existsSync(f))return;const b=fs.readFileSync(f);if(b.includes(0))return;const n=b.toString("utf8").split("\\n").length;if(n>300){process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: "+f+" is "+n+" lines — large enough to crowd Claude context. Run the delegation gate before reading it: print the scope line (this is a read task${readTarget ? ' → ' + readTarget : ''}), then ask via AskUserQuestion exactly: \\"${question}\\". If yes, pass the path in files[] to the delegate tool so the bytes go straight to the delegate instead of being read into context."}}))}}catch(e){}})'`;
 
-const skillHookCmd = (name) => `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: about to load skill \\""+k+"\\". If the resulting work is large (>200 lines of code, >3 files, >4k tokens of output, or heavy analysis), first ask the user exactly: \\"Delegate to ${name}? (y/n)\\" before proceeding."}}))}catch(e){}})'`;
+const skillHookCmd = (question) => `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: about to load skill \\""+k+"\\". If the resulting work is large (>200 lines of code, >3 files, >4k tokens of output, or heavy analysis), run the delegation gate first: scope line, then ask via AskUserQuestion exactly: \\"${question}\\" before proceeding."}}))}catch(e){}})'`;
 
 // PostToolUse cost display: after every deepseek call, find the flat
 // `deepseek-cost:{...}` marker the server appends to its footer (pricing.mjs)
@@ -89,12 +110,22 @@ const skillHookCmd = (name) => `node -e 'let s="";process.stdin.on("data",d=>s+=
 // both the buffered shape (one text item) and the streamed shape (many).
 const COST_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}");const g=(o)=>typeof o==="string"?o:(o&&typeof o==="object"?Object.values(o).map(g).join("\\n"):"");const m=g(i.tool_response).match(/deepseek-cost:(\\{.*?\\})/);if(!m)return;const c=JSON.parse(m[1]);if(c&&typeof c.line==="string"&&c.line.length<400)process.stdout.write(JSON.stringify({systemMessage:c.line}))}catch(e){}})'`;
 
-export function managedHooks(providerName = 'DeepSeek') {
-  const name = safeProviderName(providerName);
+// opts: { gateQuestion, readTarget } — or a bare provider-name string
+// (v3.0 back-compat). readTarget e.g. "deepseek-v4-flash via DeepSeek".
+export function managedHooks(opts = {}) {
+  if (typeof opts === 'string') opts = { gateQuestion: `Delegate to ${safeProviderName(opts)}? (y/n)` };
+  const question = sanitizeGateText(opts.gateQuestion || 'Delegate to DeepSeek? (y/n)');
+  const readTarget = opts.readTarget ? sanitizeGateText(opts.readTarget) : '';
   return [
-    { matcher: 'Read', _managedBy: MARKER, hooks: [{ type: 'command', command: readHookCmd(name) }] },
-    { matcher: 'Skill', _managedBy: MARKER, hooks: [{ type: 'command', command: skillHookCmd(name) }] },
+    { matcher: 'Read', _managedBy: MARKER, hooks: [{ type: 'command', command: readHookCmd(question, readTarget) }] },
+    { matcher: 'Skill', _managedBy: MARKER, hooks: [{ type: 'command', command: skillHookCmd(question) }] },
   ];
+}
+
+// These strings are embedded in shell-single-quoted node -e programs inside
+// double-quoted JS strings — strip anything that could escape either layer.
+function sanitizeGateText(text) {
+  return String(text).replace(/[^A-Za-z0-9 ()?./·:_-]/g, '').trim();
 }
 
 export function managedPostHooks() {
@@ -174,19 +205,20 @@ export function removeBlock(text) {
 // (addHooks, removeHooks, doctor) must use this, never the tag directly.
 export function isManagedHook(entry) {
   if (entry && entry._managedBy === MARKER) return true;
-  // The gate text names whatever provider the user chose, so match its shape.
+  // The gate text varies ("Delegate to X? (y/n)" or the multi-provider
+  // "Delegate? (y/n)"), so match its invariant shape.
   const cmds = (entry?.hooks || []).map((h) => h?.command || '').join('\n');
-  return ((cmds.includes('Delegate to ') && cmds.includes('? (y/n)')) || cmds.includes('deepseek-cost:')) && cmds.includes('node -e');
+  return ((cmds.includes('Delegate') && cmds.includes('? (y/n)')) || cmds.includes('deepseek-cost:')) && cmds.includes('node -e');
 }
 const isOurs = isManagedHook;
 
 // Ensure settings contains exactly our managed hooks (idempotent), without
 // disturbing any other hooks the user has. Mutates and returns a copy.
-export function addHooks(settingsIn, providerName = 'DeepSeek') {
+export function addHooks(settingsIn, hookOpts = {}) {
   const settings = structuredClone(settingsIn || {});
   if (typeof settings.hooks !== 'object' || settings.hooks === null) settings.hooks = {};
   // drop any prior copies of ours, then add fresh — keeps it idempotent
-  for (const [event, ours] of [['PreToolUse', managedHooks(providerName)], ['PostToolUse', managedPostHooks()]]) {
+  for (const [event, ours] of [['PreToolUse', managedHooks(hookOpts)], ['PostToolUse', managedPostHooks()]]) {
     if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = [];
     settings.hooks[event] = settings.hooks[event].filter((e) => !isOurs(e));
     settings.hooks[event].push(...ours);

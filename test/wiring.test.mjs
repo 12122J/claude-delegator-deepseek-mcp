@@ -44,24 +44,51 @@ test('upsertBlock works on a brand new (empty) file', () => {
   ok(hasBlock(out));
 });
 
-test('managedRules names the chosen provider and the delegate tool', () => {
+test('managedRules names the provider (string back-compat) and the delegate tool', () => {
   const rules = managedRules('Moonshot');
   ok(rules.includes('Delegate to Moonshot? (y/n)'), 'gate names the provider');
   ok(rules.includes('`delegate` tool'), 'references the v3 tool');
   ok(rules.includes('`task`'), 'teaches the task param');
+  ok(rules.includes('AskUserQuestion'), 'gate goes through the native picker');
+  ok(rules.includes('⎿ delegate ·'), 'prescribes the scope-line format');
 });
 
-test('managedRules with a shortlist wires the AskUserQuestion picker', () => {
-  const rules = managedRules('DeepSeek', {
+test('managedRules: cross-provider routing gets a neutral gate + the table', () => {
+  const rules = managedRules({
+    gateQuestion: 'Delegate? (y/n)',
+    routingInfo: [
+      { task: 'read', model: 'deepseek-v4-flash', provider: 'DeepSeek', blurb: 'digest big inputs' },
+      { task: 'write', model: 'glm-4.6', provider: 'Z.AI', blurb: 'generate code' },
+      { task: 'reason', model: 'glm-4.6', provider: 'Z.AI', blurb: 'logic' },
+    ],
+  });
+  ok(rules.includes('**"Delegate? (y/n)"**'), 'neutral question, no single provider named');
+  ok(!rules.includes('Delegate to '), 'the lying single-provider gate is gone');
+  ok(rules.includes('read → `deepseek-v4-flash` via DeepSeek'), 'routing table names true targets');
+  ok(rules.includes('write → `glm-4.6` via Z.AI'));
+});
+
+test('managedRules with a shortlist wires the AskUserQuestion model picker', () => {
+  const rules = managedRules({
+    gateQuestion: 'Delegate? (y/n)',
     shortlist: [
-      { spec: 'deepseek-v4-pro', hint: '$0.435/$0.87 per 1M' },
+      { spec: 'deepseek-v4-pro', hint: '$0.435/$0.87 per 1M · DeepSeek' },
       { spec: 'moonshot:kimi-k2.5', hint: '' },
     ],
   });
-  ok(rules.includes('AskUserQuestion'), 'uses Claude Code\'s native picker');
-  ok(rules.includes('`deepseek-v4-pro` — $0.435/$0.87 per 1M'), 'lists shortlist entries with prices');
+  ok(rules.includes('second AskUserQuestion'), 'model choice is a second native picker');
+  ok(rules.includes('`deepseek-v4-pro` — $0.435/$0.87 per 1M · DeepSeek'), 'lists shortlist entries with prices');
   ok(rules.includes('`moonshot:kimi-k2.5`'), 'cross-provider spec included');
-  ok(!rules.includes('Set `task`'), 'ask mode replaces the routing bullet');
+  ok(!rules.includes('with `task` set'), 'ask mode replaces the routing bullet');
+});
+
+test('managedHooks: neutral question and read target reach the hook commands', () => {
+  const hooks = managedHooks({ gateQuestion: 'Delegate? (y/n)', readTarget: 'deepseek-v4-flash via DeepSeek' });
+  const read = hooks.find((h) => h.matcher === 'Read').hooks[0].command;
+  ok(read.includes('Delegate? (y/n)'), 'read hook asks the neutral question');
+  ok(read.includes('deepseek-v4-flash via DeepSeek'), 'read hook names the routed target');
+  const skill = hooks.find((h) => h.matcher === 'Skill').hooks[0].command;
+  ok(skill.includes('Delegate? (y/n)'));
 });
 
 test('managedRules sanitizes hostile provider names', () => {
