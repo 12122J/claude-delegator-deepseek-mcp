@@ -16,7 +16,7 @@ Claude orchestrates; the delegate does the grunt work (big file audits, long gen
 
 > ⭐ **If this saves you money, please [star the repo](https://github.com/12122J/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
 
-<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/hero.svg" alt="A Claude Code session: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, the task is delegated via files[], Claude synthesizes the answer, and a cost receipt shows the spend and savings" width="860">
+<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/hero.svg" alt="A Claude Code session in a light macOS terminal: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, files are handed off via files[], a receipt line shows saved $0.194 (94% vs Opus) · spent $0.012, and Claude synthesizes the three findings" width="860">
 
 Every call ends with a receipt — shown to you automatically, straight from the API's own token counts. You always know what you spent and what you saved.
 
@@ -35,7 +35,11 @@ The wizard walks you through four choices — arrow keys, ~1 minute:
 3. **Which model runs your delegations** — a smart split (the cheap model digests, the big one creates), a shortlist you pick from each time, always best / always cheapest, or custom (see below).
 4. **Savings baseline** — measure savings against Opus 4.8, Sonnet 5, or don't show savings.
 
-It then shows exactly what it will change, asks, applies, and prints a recap. Sanity-check anytime:
+It then shows exactly what it will change, asks, applies, and prints a recap:
+
+<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/init.svg" alt="The init wizard in a light macOS terminal: collapsed steps for Provider (DeepSeek), API key detected, live key verification, the active 'Which model runs your delegations?' picker on Smart split, the savings baseline, a panel disclosing the 4 changes, four green applied rows, the 'delegation is wired' recap panel, and the outro with a GitHub star ask" width="860">
+
+Sanity-check anytime:
 
 ```bash
 npx claude-code-deepseek-delegator doctor
@@ -69,7 +73,38 @@ So the wizard asks one question — **"Which model runs your delegations?"** —
 - **Always the best / Always the cheapest** — one model for everything, zero decisions.
 - **Custom** — pick a model per kind of work (`read` / `write` / `reason`), including cross-provider: send reads to Kimi while writes stay on DeepSeek.
 
-Under the hood this writes `~/.claude/delegator.json`, which you can edit anytime — changes apply on the next call:
+### What each choice feels like in a session
+
+**Smart split.** You never see a model decision — the same y/n gives cheap digestion and quality creation:
+
+```
+❯ summarize what src/auth.py does            (2,100 lines)
+> Delegate to DeepSeek? (y/n)  y
+⎿ delegate deepseek-v4-flash via deepseek · saved $0.081 (94% vs Opus) · spent $0.005
+                    ↑ digestion → the cheap model ran
+
+❯ now rewrite it with proper token rotation
+> Delegate to DeepSeek? (y/n)  y
+⎿ delegate deepseek-v4-pro via deepseek · saved $0.152 (91% vs Opus) · spent $0.019
+                    ↑ creation → the big model ran
+```
+
+**Ask me each time.** After your `y`, Claude opens Claude Code's picker with your shortlist and prices; your tap decides:
+
+```
+> Delegate to DeepSeek? (y/n)  y
+
+  Which model?                       ← Claude Code's native picker
+  ❯ deepseek-v4-flash   $0.14 / $0.28 per 1M
+    deepseek-v4-pro     $0.435 / $0.87 per 1M
+    moonshot:kimi-k2.5  $0.20 / $1.20 per 1M
+
+⎿ delegate kimi-k2.5 via moonshot · saved $0.117 (88% vs Opus) · spent $0.016
+```
+
+**Always the best / cheapest.** Every delegation is the same model — exactly how v2 behaved, one price.
+
+Under the hood every choice just writes `~/.claude/delegator.json`, which you can edit anytime — changes apply on the next call, no restart:
 
 ```jsonc
 {
