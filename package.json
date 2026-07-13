@@ -33,7 +33,21 @@
     "kimi",
     "glm",
     "qwen",
-    "providers"
+    "providers",
+    "mcp-server",
+    "llm",
+    "ai-agent",
+    "cli",
+    "anthropic",
+    "moonshot",
+    "zhipu",
+    "grok",
+    "groq",
+    "ollama",
+    "openai-compatible",
+    "llm-router",
+    "subagent",
+    "token-savings"
   ],
   "repository": {
     "type": "git",
