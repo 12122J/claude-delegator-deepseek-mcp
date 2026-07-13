@@ -46,6 +46,11 @@ export function loadProviders({ fresh = false } = {}) {
   for (const p of loadUserProviders()) {
     if (p?.id && Array.isArray(p.models)) providers.set(p.id, p);
   }
+  // v2 compat: DEEPSEEK_API_HOST overrode the DeepSeek hostname.
+  if (process.env.DEEPSEEK_API_HOST && providers.has('deepseek')) {
+    const ds = providers.get('deepseek');
+    providers.set('deepseek', { ...ds, api_endpoint: `https://${process.env.DEEPSEEK_API_HOST}` });
+  }
   cache = providers;
   return providers;
 }

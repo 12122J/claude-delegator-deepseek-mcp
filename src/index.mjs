@@ -167,22 +167,28 @@ async function runCli(sub, args) {
 
 function printHelp() {
   console.log(`
-claude-code-deepseek-delegator — delegate heavy tasks from Claude Code to DeepSeek
+claude-code-deepseek-delegator — delegate heavy tasks from Claude Code to a cheaper model
+(DeepSeek, Kimi, GLM, Qwen, Grok, Groq, OpenRouter, or any OpenAI-compatible endpoint)
 
 Usage:
   npx claude-code-deepseek-delegator <command>
 
 Commands:
   (no command)   Run the MCP server (this is how Claude Code launches it)
-  init           Fully wire into Claude Code: MCP server + CLAUDE.md rules + hooks
-  doctor         Verify the install and live-fire the gate hooks
-  uninstall      Cleanly remove everything init added
+  init           Interactive setup wizard: provider, key, routing, rules, hooks
+  doctor         Verify the install, resolve the config, live-fire the gate hooks
+  uninstall      Cleanly remove everything init added (incl. delegator.json)
   help           Show this help
   --version      Print version
 
 init options:
-  --dry-run      Show what would change, write nothing
-  --no-hooks     Skip the settings.json hooks (rules-only, softer gate)
-  --yes, -y      Non-interactive (don't prompt for the API key)
+  --dry-run             Show what would change, write nothing
+  --no-hooks            Skip the settings.json hooks (rules-only, softer gate)
+  --yes, -y             Non-interactive, v2-identical defaults
+  --provider <id>       deepseek · moonshot · zai · zhipu · alibaba-singapore · groq · xai · openrouter
+  --key <key>           API key (else env var / prompt)
+  --preset <name>       balanced · cheapest · max
+  --mode <name>         auto (route by task) · ask (shortlist picker)
+  --baseline <name>     opus · sonnet · none
 `);
 }
