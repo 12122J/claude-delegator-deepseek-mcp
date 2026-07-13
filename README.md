@@ -32,7 +32,7 @@ The wizard walks you through four choices — arrow keys, ~1 minute:
 
 1. **Provider** — DeepSeek, Moonshot (Kimi), Z.AI / Zhipu (GLM), Alibaba (Qwen), Groq, xAI (Grok), OpenRouter, or any custom OpenAI-compatible endpoint (ollama, vllm, LM Studio, a proxy).
 2. **API key** — detected from your environment, or paste it (hidden). The wizard **live-fires a 1-token request** so a bad key fails right there with the provider's real error, not on tomorrow's first delegation.
-3. **Model choice** — route by task automatically, or keep a shortlist and get asked each time (see below).
+3. **Which model runs your delegations** — a smart split (the cheap model digests, the big one creates), a shortlist you pick from each time, always best / always cheapest, or custom (see below).
 4. **Savings baseline** — measure savings against Opus 4.8, Sonnet 5, or don't show savings.
 
 It then shows exactly what it will change, asks, applies, and prints a recap. Sanity-check anytime:
@@ -58,36 +58,34 @@ npx claude-code-deepseek-delegator uninstall
 
 ---
 
-## Task routing (v3)
+## Which model does the work?
 
-Different work wants different models. The config routes by task:
+Not every delegation deserves your best model. "Summarize this 2,000-line file" is digestion — a cheap model does it fine. "Rewrite this module" is creation — you want the good one. Paying pro prices for flash work is where delegation savings quietly leak.
+
+So the wizard asks one question — **"Which model runs your delegations?"** — with answers that map to how people actually think:
+
+- **Smart split (recommended)** — the cheap model digests big files, the big model writes code and reasons. You never think about it again; the receipt shows which one ran.
+- **Ask me each time** — you keep a shortlist, and when you approve a delegation Claude shows it through Claude Code's **native picker UI** (the same one `/model` uses) with prices. You tap the model, it delegates there.
+- **Always the best / Always the cheapest** — one model for everything, zero decisions.
+- **Custom** — pick a model per kind of work (`read` / `write` / `reason`), including cross-provider: send reads to Kimi while writes stay on DeepSeek.
+
+Under the hood this writes `~/.claude/delegator.json`, which you can edit anytime — changes apply on the next call:
 
 ```jsonc
-// ~/.claude/delegator.json
 {
   "provider": "deepseek",
-  "mode": "auto",
+  "mode": "auto",                        // or "ask" for the shortlist picker
+  "shortlist": ["deepseek-v4-flash", "deepseek-v4-pro", "moonshot:kimi-k2.5"],
   "routing": {
-    "read":   "deepseek-v4-flash",   // summarize/analyze large inputs — cheap
-    "write":  "deepseek-v4-pro",     // generate code and docs
-    "reason": "deepseek-v4-pro"      // math, logic, architecture
+    "read":   "deepseek-v4-flash",       // digest/summarize big inputs
+    "write":  "deepseek-v4-pro",         // generate code and docs
+    "reason": "deepseek-v4-pro"          // math, logic, architecture
   },
   "baseline": "opus-4.8"
 }
 ```
 
-Claude passes `task: "read" | "write" | "reason"` on each call and the router picks the model. Routing values accept cross-provider specs — `"moonshot:kimi-k2.5"` sends reads to Kimi while writes stay on DeepSeek. An explicit `model` argument always wins.
-
-## Or: pick the model yourself, each time
-
-Choose **"Ask me each time"** in the wizard and keep a shortlist. When you approve a delegation, Claude presents the shortlist through Claude Code's **native picker UI** (the same one `/model` uses) with prices, and delegates to whichever you choose:
-
-```jsonc
-{
-  "mode": "ask",
-  "shortlist": ["deepseek-v4-flash", "deepseek-v4-pro", "moonshot:kimi-k2.5"]
-}
-```
+How the smart split works mechanically: Claude labels each delegation `task: "read" | "write" | "reason"`, the server looks the label up in `routing`, and that model id goes on the wire (this chain is covered by an end-to-end test against a mock provider). An explicit `model` argument — like the one your picker choice produces in ask mode — always beats the routing table. If Claude omits the label entirely, the provider's default large model runs: the failure mode is a price tier, never a crash.
 
 ## Providers
 
@@ -225,3 +223,5 @@ npx claude-code-deepseek-delegator <command>
 ## License
 
 MIT. Provider registry data vendored from [charmbracelet/catwalk](https://github.com/charmbracelet/catwalk) (MIT).
+
+Built by [Javi](https://github.com/12122J). If this saves you money, [a star](https://github.com/12122J/claude-delegator-deepseek-mcp) is the nicest way to say thanks — it's how other Claude Code users find it.
