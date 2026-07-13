@@ -16,7 +16,7 @@ Claude orchestrates; the delegate does the grunt work (big file audits, long gen
 
 > ⭐ **If this saves you money, please [star the repo](https://github.com/12122J/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
 
-<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/hero.svg" alt="A Claude Code session in a light macOS terminal: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, files are handed off via files[], a receipt line shows saved $0.194 (94% vs Opus) · spent $0.012, and Claude synthesizes the three findings" width="860">
+<img src="assets/hero.svg" alt="A Claude Code session in a light macOS terminal: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, files are handed off via files[], a receipt line shows saved $0.194 (94% vs Opus) · spent $0.012, and Claude synthesizes the three findings" width="860">
 
 Every call ends with a receipt — shown to you automatically, straight from the API's own token counts. You always know what you spent and what you saved.
 
@@ -37,7 +37,7 @@ The wizard walks you through four choices — arrow keys, ~1 minute:
 
 It then shows exactly what it will change, asks, applies, and prints a recap:
 
-<img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/init.svg" alt="The init wizard in a light macOS terminal: collapsed steps for Provider (DeepSeek), API key detected, live key verification, the active 'Which model runs your delegations?' picker on Smart split, the savings baseline, a panel disclosing the 4 changes, four green applied rows, the 'delegation is wired' recap panel, and the outro with a GitHub star ask" width="860">
+<img src="assets/init.svg" alt="The init wizard in a light macOS terminal: collapsed steps for Provider (DeepSeek), API key detected, live key verification, the active 'Which model runs your delegations?' picker on Smart split, the savings baseline, a panel disclosing the 4 changes, four green applied rows, the 'delegation is wired' recap panel, and the outro with a GitHub star ask" width="860">
 
 Sanity-check anytime:
 
