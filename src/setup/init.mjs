@@ -18,7 +18,7 @@ import { createRequire } from 'node:module';
 import {
   paths, backupFile, atomicWrite, readJsonSafe,
   upsertBlock, addHooks, mcpEntry, managedRules,
-  PKG_NAME,
+  PKG_NAME, REPO_URL, AUTHOR,
 } from './wiring.mjs';
 import {
   listProviders, getProvider, loadProviders, resolveApiKey, keyEnvVar, findModel,
@@ -199,23 +199,6 @@ async function validateKey({ provider, key, interactive, notes }) {
   return key;
 }
 
-// 'auto' = task routing decides silently; 'ask' = Claude presents the
-// shortlist through AskUserQuestion (Claude Code's native picker) each time.
-async function chooseMode({ interactive, flagMode }) {
-  if (flagMode) {
-    if (flagMode !== 'auto' && flagMode !== 'ask') {
-      stepFail('Model choice', `unknown mode "${flagMode}" — use: auto, ask`);
-      return null;
-    }
-    return flagMode;
-  }
-  if (!interactive) return 'auto';
-  return select('Model choice at delegation time', [
-    { label: 'Route by task (recommended)', hint: 'read/write/reason each get a model — zero friction', value: 'auto' },
-    { label: 'Ask me each time', hint: 'pick from your shortlist in Claude Code\'s own picker', value: 'ask' },
-  ], { initialIndex: 0 });
-}
-
 async function chooseShortlist({ provider, interactive }) {
   const large = provider.default_large_model_id;
   const small = provider.default_small_model_id || large;
@@ -230,7 +213,11 @@ async function chooseShortlist({ provider, interactive }) {
   return multiselect('Shortlist', items, { initialSelected: [...new Set([large, small])] });
 }
 
-async function chooseRouting({ provider, interactive, flagPreset }) {
+// The one model question. No "task routing" vocabulary, no separate mode
+// step — the options ARE the explanation. "Smart split" quietly maps to the
+// small-digests / large-creates routing; "ask" flips on the shortlist picker.
+async function choosePicking({ provider, interactive, flagMode, flagPreset }) {
+  const TITLE = 'Which model runs your delegations?';
   const large = provider.default_large_model_id;
   const small = provider.default_small_model_id || large;
   const presets = {
@@ -238,20 +225,34 @@ async function chooseRouting({ provider, interactive, flagPreset }) {
     cheapest: { read: small, write: small, reason: small },
     max: { read: large, write: large, reason: large },
   };
-  if (flagPreset && !presets[flagPreset]) {
-    stepFail('Model routing', `unknown preset "${flagPreset}" — use: balanced, cheapest, max`);
+  if (flagMode && flagMode !== 'auto' && flagMode !== 'ask') {
+    stepFail(TITLE, `unknown mode "${flagMode}" — use: auto, ask`);
     return null;
   }
+  if (flagPreset && !presets[flagPreset]) {
+    stepFail(TITLE, `unknown preset "${flagPreset}" — use: balanced, cheapest, max`);
+    return null;
+  }
+  if (flagMode === 'ask') return { mode: 'ask', routing: presets.balanced };
+  if (flagPreset) return { mode: 'auto', routing: presets[flagPreset] };
   // Non-interactive default is "max" — the exact v2 behavior (one big model
   // for everything), so `init --yes` upgrades never silently change routing.
-  const preset = flagPreset || (interactive ? await select('Model routing', [
-    { label: 'Balanced (recommended)', hint: `read→${small} · write/reason→${large}`, value: 'balanced' },
-    { label: 'Cheapest', hint: `everything→${small}`, value: 'cheapest' },
-    { label: 'Max quality', hint: `everything→${large}`, value: 'max' },
-    { label: 'Custom…', hint: 'pick a model per task', value: 'custom' },
-  ], { initialIndex: 0 }) : 'max');
+  if (!interactive) return { mode: 'auto', routing: presets.max };
 
-  if (preset !== 'custom') return presets[preset];
+  const choice = await select(TITLE, [
+    {
+      label: 'Smart split (recommended)',
+      hint: small !== large ? `${small} digests big files · ${large} writes code and reasons` : `${large} for everything`,
+      value: 'balanced',
+    },
+    { label: 'Ask me each time', hint: 'choose from a shortlist in Claude Code\'s picker', value: 'ask' },
+    { label: 'Always the best', hint: `${large} for everything`, value: 'max' },
+    { label: 'Always the cheapest', hint: `${small} for everything`, value: 'cheapest' },
+    { label: 'Custom…', hint: 'pick a model for each kind of work', value: 'custom' },
+  ], { initialIndex: 0 });
+
+  if (choice === 'ask') return { mode: 'ask', routing: presets.balanced };
+  if (choice !== 'custom') return { mode: 'auto', routing: presets[choice] };
 
   const routing = {};
   const items = provider.models.map((m) => ({
@@ -259,13 +260,13 @@ async function chooseRouting({ provider, interactive, flagPreset }) {
     hint: `${((m.context_window ?? 0) / 1024).toFixed(0)}K ctx · ${priceHint(m)}`,
     value: m.id,
   }));
-  const taskBlurb = { read: 'summarize/analyze large inputs', write: 'generate code and docs', reason: 'math, logic, architecture' };
+  const taskBlurb = { read: 'digest/summarize big inputs', write: 'generate code and docs', reason: 'math, logic, architecture' };
   for (const task of TASKS) {
-    routing[task] = await select(`Model for "${task}" — ${taskBlurb[task]}`, items, {
+    routing[task] = await select(`Model when the work is "${task}" — ${taskBlurb[task]}`, items, {
       initialIndex: Math.max(0, provider.models.findIndex((m) => m.id === (task === 'read' ? small : large))),
     });
   }
-  return routing;
+  return { mode: 'auto', routing };
 }
 
 async function chooseBaseline({ interactive, flagBaseline }) {
@@ -330,21 +331,12 @@ async function wizard(argv) {
     key = await validateKey({ provider, key, interactive, notes });
   }
 
-  // 3) model choice: automatic task routing, or an ask-each-time shortlist
-  const mode = await chooseMode({ interactive, flagMode });
-  if (!mode) return 1;
+  // 3) which model runs delegations (one question; "ask" adds a shortlist)
+  const picked = await choosePicking({ provider, interactive, flagMode, flagPreset });
+  if (!picked) return 1;
+  const { mode, routing } = picked;
   let shortlist = [];
-  let routing;
-  if (mode === 'ask') {
-    shortlist = await chooseShortlist({ provider, interactive });
-    // routing still backs the `task` param when Claude skips the picker
-    const large = provider.default_large_model_id;
-    const small = provider.default_small_model_id || large;
-    routing = { read: small, write: large, reason: large };
-  } else {
-    routing = await chooseRouting({ provider, interactive, flagPreset });
-    if (!routing) return 1;
-  }
+  if (mode === 'ask') shortlist = await chooseShortlist({ provider, interactive });
   const baseline = await chooseBaseline({ interactive, flagBaseline });
   if (!baseline) return 1;
 
@@ -479,6 +471,9 @@ async function wizard(argv) {
     `${dim('try:')}      claude "use delegate to summarize README.md"`,
     `${dim('verify:')}   npx ${PKG_NAME} doctor`,
     `${dim('remove:')}   npx ${PKG_NAME} uninstall`,
+    '',
+    `${color('yellow', '★')} ${dim(`enjoying it? a star helps others find it →`)} ${REPO_URL}`,
+    dim(`  built by ${AUTHOR}`),
   ]);
   return 0;
 }
