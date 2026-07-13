@@ -97,14 +97,20 @@ export const TOOLS = [
 
 const ALIASES = { deepseek: 'delegate', deepseek_models: 'delegate_models' };
 
+// Which provider+model a delegate call runs on. Deterministic precedence:
+// explicit `model` > `task` routing from delegator.json > active provider's
+// default_large_model_id. Exported so tests can pin the whole truth table.
+export function resolveDelegation(args, config = loadConfig()) {
+  const activeId = args.provider || config.provider;
+  const spec = args.model || (args.task && config.routing[args.task]) || null;
+  return resolveModel(spec, activeId);
+}
+
 export async function handleToolCall(name, args) {
   switch (ALIASES[name] || name) {
     case 'delegate': {
       const config = loadConfig();
-      const activeId = args.provider || config.provider;
-      // Precedence: explicit model > task routing > active provider default.
-      const spec = args.model || (args.task && config.routing[args.task]) || null;
-      const { provider, model } = resolveModel(spec, activeId);
+      const { provider, model } = resolveDelegation(args, config);
 
       // Read files server-side — bytes stay in the MCP process, never in Claude's context
       let prompt = args.prompt;
