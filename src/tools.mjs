@@ -1,76 +1,118 @@
 import { readFile, stat } from 'fs/promises';
 import { basename, extname } from 'path';
-import { callDeepSeek } from './client.mjs';
-import { MODELS, listModels, getDefaultModel } from './models.mjs';
-import { buildFooter } from './pricing.mjs';
+import { callModel } from './client.mjs';
+import { listProviders, resolveApiKey, keyEnvVar, resolveModel } from './providers/registry.mjs';
+import { loadConfig, TASKS } from './config.mjs';
+import { buildFooter, formatCost } from './pricing.mjs';
 import { color, bold, dim } from './colors.mjs';
+
+const DELEGATE_SCHEMA = {
+  type: 'object',
+  properties: {
+    prompt: {
+      type: 'string',
+      description: 'The full task/prompt to send to the delegated model. Be thorough and specific.',
+    },
+    task: {
+      type: 'string',
+      enum: TASKS,
+      description:
+        'What kind of work this is, so routing picks the right model: ' +
+        '"read" = summarize/analyze/extract from large inputs; ' +
+        '"write" = generate code or docs; ' +
+        '"reason" = math, logic, architecture decisions. ' +
+        'Omit to use the default model.',
+    },
+    model: {
+      type: 'string',
+      description:
+        'Override the routed model. A bare model id (e.g. "deepseek-v4-flash") or ' +
+        '"provider:model" for cross-provider (e.g. "openrouter:moonshotai/kimi-k2.5"). ' +
+        'Prefer `task` and let routing decide.',
+    },
+    provider: {
+      type: 'string',
+      description: 'Override the active provider by id (e.g. "moonshot"). Rarely needed.',
+    },
+    system: {
+      type: 'string',
+      description: 'Optional system prompt to set context/behavior',
+    },
+    temperature: {
+      type: 'number',
+      description: 'Temperature (0-2). Lower = more deterministic. Default: 0.3',
+      default: 0.3,
+    },
+    stream: {
+      type: 'boolean',
+      description:
+        'Stream the response as incremental chunks instead of buffering the full output. ' +
+        'Recommended for large outputs (>50K tokens) to reduce memory pressure. Default: false',
+      default: false,
+    },
+    files: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'Absolute file paths to read and include in the prompt. ' +
+        'The MCP server reads them directly — file contents never pass through Claude\'s context window. ' +
+        'Use this instead of reading files with Read/ctx_read and embedding them in prompt.',
+    },
+  },
+  required: ['prompt'],
+};
+
+const DELEGATE_DESCRIPTION =
+  'Delegate heavy, token-intensive tasks from Claude Code to a cheaper model ' +
+  '(DeepSeek, Kimi, GLM, Qwen, Grok, or any configured OpenAI-compatible provider). ' +
+  'Use when: analyzing large files (>300 lines), ' +
+  'multi-file codebase reviews, generating outputs >200 lines, complex reasoning, math, architecture design, ' +
+  'or anytime your response would exceed ~4000 tokens. Claude orchestrates; the delegate does the heavy lifting. ' +
+  'Pass `task` (read/write/reason) so routing picks the right model.';
 
 export const TOOLS = [
   {
+    name: 'delegate',
+    description: DELEGATE_DESCRIPTION,
+    inputSchema: DELEGATE_SCHEMA,
+  },
+  {
+    name: 'delegate_models',
+    description: 'List the configured providers and their models with context windows, output limits, and pricing',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  // v2 tool names, kept registered so existing CLAUDE.md rules and muscle
+  // memory keep working. Same handlers as the canonical names above.
+  {
     name: 'deepseek',
-    description:
-      'Delegate heavy, token-intensive tasks from Claude Code to DeepSeek. ' +
-      'Use when: analyzing large files (>300 lines), ' +
-      'multi-file codebase reviews, generating outputs >200 lines, complex reasoning, math, architecture design, ' +
-      'or anytime your response would exceed ~4000 tokens. Claude orchestrates; DeepSeek does the heavy lifting.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: {
-          type: 'string',
-          description: 'The full task/prompt to send to DeepSeek. Be thorough and specific.',
-        },
-        system: {
-          type: 'string',
-          description: 'Optional system prompt to set context/behavior',
-        },
-        temperature: {
-          type: 'number',
-          description: 'Temperature (0-2). Lower = more deterministic. Default: 0.3',
-          default: 0.3,
-        },
-        stream: {
-          type: 'boolean',
-          description:
-            'Stream the response as incremental chunks instead of buffering the full output. ' +
-            'Recommended for large outputs (>50K tokens) to reduce memory pressure. Default: false',
-          default: false,
-        },
-        files: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Absolute file paths to read and include in the prompt. ' +
-            'The MCP server reads them directly — file contents never pass through Claude\'s context window. ' +
-            'Use this instead of reading files with Read/ctx_read and embedding them in prompt.',
-        },
-      },
-      required: ['prompt'],
-    },
+    description: 'Alias of delegate (kept for v2 compatibility). ' + DELEGATE_DESCRIPTION,
+    inputSchema: DELEGATE_SCHEMA,
   },
   {
     name: 'deepseek_models',
-    description: 'Show the DeepSeek model in use with its context window and output limit',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
+    description: 'Alias of delegate_models (kept for v2 compatibility).',
+    inputSchema: { type: 'object', properties: {} },
   },
 ];
 
+const ALIASES = { deepseek: 'delegate', deepseek_models: 'delegate_models' };
+
 export async function handleToolCall(name, args) {
-  switch (name) {
-    case 'deepseek': {
-      const model = args.model || getDefaultModel();
+  switch (ALIASES[name] || name) {
+    case 'delegate': {
+      const config = loadConfig();
+      const activeId = args.provider || config.provider;
+      // Precedence: explicit model > task routing > active provider default.
+      const spec = args.model || (args.task && config.routing[args.task]) || null;
+      const { provider, model } = resolveModel(spec, activeId);
 
       // Read files server-side — bytes stay in the MCP process, never in Claude's context
-      let resolvedArgs = args;
+      let prompt = args.prompt;
       const filePaths = Array.isArray(args.files) ? args.files.filter((p) => typeof p === 'string') : [];
       if (filePaths.length > 0) {
-        const modelInfo = MODELS[model] || MODELS[getDefaultModel()];
         // Rough guard: ~3 chars per token; leave half the context for output + prompt
-        const contextWindow = (typeof modelInfo?.contextWindow === 'number' && modelInfo.contextWindow > 0)
-          ? modelInfo.contextWindow : 128_000;
+        const contextWindow = (typeof model.context_window === 'number' && model.context_window > 0)
+          ? model.context_window : 128_000;
         const maxFileBytes = Math.floor((contextWindow / 2) * 3);
         let totalBytes = 0;
 
@@ -89,21 +131,25 @@ export async function handleToolCall(name, args) {
             }
           })
         );
-        resolvedArgs = {
-          ...args,
-          prompt: args.prompt + '\n\n## FILES:\n\n' + sections.join('\n\n'),
-        };
+        prompt = args.prompt + '\n\n## FILES:\n\n' + sections.join('\n\n');
       }
 
-      const result = await callDeepSeek(resolvedArgs);
+      const result = await callModel({
+        provider,
+        model,
+        prompt,
+        system: args.system,
+        temperature: args.temperature,
+        stream: args.stream,
+      });
       const header = [
         '',
         dim('─── claude-code-deepseek-delegator'),
-        `${color('green', '◆')} ${bold('delegated to')} ${color('cyan', 'DeepSeek')} ${dim('(' + model.replace('deepseek-', '') + ')')}`,
+        `${color('green', '◆')} ${bold('delegated to')} ${color('cyan', provider.name)} ${dim('(' + model.id + (args.task ? ' · ' + args.task : '') + ')')}`,
         '',
       ].join('\n');
 
-      const footer = buildFooter(result, model);
+      const footer = buildFooter(result, { provider, model, baseline: config.baseline });
 
       // Streamed responses: return each chunk as a separate content item
       if (result.streamed && Array.isArray(result.content)) {
@@ -119,20 +165,30 @@ export async function handleToolCall(name, args) {
         content: [{ type: 'text', text: header + result.content + footer }],
       };
     }
-    case 'deepseek_models': {
-      const models = listModels();
-      const text = [
-        dim('─── claude-code-deepseek-delegator · models ───'),
+    case 'delegate_models': {
+      const config = loadConfig();
+      const providers = listProviders();
+      const lines = [
+        dim('─── claude-code-deepseek-delegator · providers ───'),
         '',
-        ...models.map(
-          (m) =>
-            `${color('green', '●')} ${bold(m.id)} ${dim('— ' + m.name)}\n` +
-            `  ${dim('context:')} ${(m.contextWindow / 1024).toFixed(0)}K  ${dim('output:')} ${(m.maxOutputTokens / 1024).toFixed(0)}K max\n` +
-            `  ${dim(m.description)}\n`
-        ),
-        dim('─────────────────────────────────────'),
-      ].join('\n');
-      return { content: [{ type: 'text', text }] };
+        dim(`active: ${config.provider} · routing: read→${config.routing.read} write→${config.routing.write} reason→${config.routing.reason}`),
+        '',
+      ];
+      for (const p of providers) {
+        const key = resolveApiKey(p)
+          ? color('green', 'key detected')
+          : dim(`needs ${keyEnvVar(p) || 'an api_key'}`);
+        lines.push(`${color(p.available ? 'green' : 'yellow', '●')} ${bold(p.name)} ${dim('(' + p.id + ')')} — ${key}`);
+        for (const m of p.models) {
+          const ctx = (m.context_window / 1024).toFixed(0);
+          const out = m.default_max_tokens ? (m.default_max_tokens / 1024).toFixed(0) + 'K out' : '';
+          lines.push(`  ${bold(m.id)}  ${dim(`${ctx}K ctx  ${out}  ${formatCost(m.cost_per_1m_in ?? 0)}/${formatCost(m.cost_per_1m_out ?? 0)} per 1M`)}`);
+        }
+        lines.push('');
+      }
+      lines.push(dim('Cross-provider spec: "provider:model-id" · config: ~/.claude/delegator.json'));
+      lines.push(dim('──────────────────────────────────────────────────'));
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

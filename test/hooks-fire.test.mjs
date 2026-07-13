@@ -10,6 +10,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { managedHooks, managedPostHooks } from '../src/setup/wiring.mjs';
 import { buildFooter } from '../src/pricing.mjs';
+import { resolveModel } from '../src/providers/registry.mjs';
+
+// The real registry entry, so the footer round-trip uses real pricing.
+const CTX = resolveModel('deepseek:deepseek-v4-pro');
 
 const hooks = managedHooks();
 const readHook = hooks.find((h) => h.matcher === 'Read').hooks[0].command;
@@ -66,7 +70,7 @@ test('hooks never crash on malformed stdin', () => {
 test('cost hook surfaces the real pricing.mjs footer as a systemMessage', () => {
   const footer = buildFooter(
     { usage: { promptTokens: 12345, completionTokens: 678, totalTokens: 13023 } },
-    'deepseek-v4-pro'
+    CTX
   );
   const { out } = fire(costHook, {
     tool_name: 'mcp__deepseek__deepseek',
@@ -84,7 +88,7 @@ test('cost hook surfaces the real pricing.mjs footer as a systemMessage', () => 
 test('cost hook handles the streamed shape (footer in the last content item)', () => {
   const footer = buildFooter(
     { usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 } },
-    'deepseek-v4-pro'
+    CTX
   );
   const { out } = fire(costHook, {
     tool_response: { content: [{ type: 'text', text: 'chunk 1' }, { type: 'text', text: 'chunk 2' }, { type: 'text', text: footer }] },
@@ -101,7 +105,7 @@ test('cost hook stays silent when there is no cost marker', () => {
 });
 
 test('cost hook stays silent when usage was missing (empty footer)', () => {
-  const footer = buildFooter({ usage: null }, 'deepseek-v4-pro');
+  const footer = buildFooter({ usage: null }, CTX);
   equal(footer, '', 'no footer without usage');
   const { out } = fire(costHook, {
     tool_response: { content: [{ type: 'text', text: 'answer' + footer }] },
