@@ -258,7 +258,10 @@ async function chooseShortlist({ provider, interactive }) {
 // The one model question. No "task routing" vocabulary, no separate mode
 // step — the options ARE the explanation. "Smart split" quietly maps to the
 // small-digests / large-creates routing; "ask" flips on the shortlist picker.
-async function choosePicking({ provider, interactive, flagMode, flagPreset }) {
+// `others` = providers beyond the active one that have a usable key: when
+// present, Custom and Ask can mix them, and the wizard must SAY so — mixing
+// that exists but is invisible does not exist.
+async function choosePicking({ provider, interactive, flagMode, flagPreset, others = [] }) {
   const TITLE = 'Which model runs your delegations?';
   const large = provider.default_large_model_id;
   const small = provider.default_small_model_id || large;
@@ -281,16 +284,29 @@ async function choosePicking({ provider, interactive, flagMode, flagPreset }) {
   // for everything), so `init --yes` upgrades never silently change routing.
   if (!interactive) return { mode: 'auto', routing: presets.max };
 
+  const otherNames = others.map((o) => o.name).join(', ');
+  if (others.length) {
+    bar(`${color('green', '◈')} You also have keys for ${bold(otherNames)} — ${bold('Ask me each time')} and ${bold('Custom…')} can mix their models in.`);
+    bar();
+  }
   const choice = await select(TITLE, [
     {
       label: 'Smart split (recommended)',
       hint: small !== large ? `${small} digests big files · ${large} writes code and reasons` : `${large} for everything`,
       value: 'balanced',
     },
-    { label: 'Ask me each time', hint: 'choose from a shortlist in Claude Code\'s picker', value: 'ask' },
+    {
+      label: 'Ask me each time',
+      hint: others.length ? `a shortlist across ${provider.name} + ${otherNames}, picked in Claude Code` : 'choose from a shortlist in Claude Code\'s picker',
+      value: 'ask',
+    },
     { label: 'Always the best', hint: `${large} for everything`, value: 'max' },
     { label: 'Always the cheapest', hint: `${small} for everything`, value: 'cheapest' },
-    { label: 'Custom…', hint: 'a model per kind of work — mix providers', value: 'custom' },
+    {
+      label: 'Custom…',
+      hint: others.length ? `a model per kind of work — mix ${provider.name} with ${otherNames}` : 'a model per kind of work',
+      value: 'custom',
+    },
   ], { initialIndex: 0 });
 
   if (choice === 'ask') return { mode: 'ask', routing: presets.balanced };
@@ -372,8 +388,11 @@ async function wizard(argv) {
     key = await validateKey({ provider, key, interactive, notes });
   }
 
-  // 3) which model runs delegations (one question; "ask" adds a shortlist)
-  const picked = await choosePicking({ provider, interactive, flagMode, flagPreset });
+  // 3) which model runs delegations (one question; "ask" adds a shortlist).
+  // A key pasted this run isn't in env/keyring yet, so the OTHER providers'
+  // availability is what listProviders can see right now.
+  const others = listProviders().filter((x) => x.id !== provider.id && x.available);
+  const picked = await choosePicking({ provider, interactive, flagMode, flagPreset, others });
   if (!picked) return 1;
   const { mode, routing } = picked;
   let shortlist = [];
