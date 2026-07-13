@@ -1,10 +1,16 @@
-# Claude Code DeepSeek Delegator — Auto-Delegate Rules
+# Claude Code Delegator — Auto-Delegate Rules (manual setup)
 
-Copy these rules into `~/.claude/CLAUDE.md`. Once added, Claude will ask **"Delegate to DeepSeek? (y/n)"** before any heavy operation.
+> **Prefer `npx claude-code-deepseek-delegator init`.** The wizard installs a
+> provider-named version of these rules plus deterministic hooks, and keeps
+> them updated. This file is the copy-paste fallback for manual setups.
+
+Copy the rules below into `~/.claude/CLAUDE.md`. Once added, Claude will ask
+**"Delegate to <YourProvider>? (y/n)"** before any heavy operation. Replace
+`DeepSeek` with the provider you configured.
 
 ---
 
-## DeepSeek Delegation (MANDATORY GATE)
+## Delegation (MANDATORY GATE)
 
 **Estimate scope FIRST — before invoking any skill, writing any code, or reading any files.** The gate fires on intent, not on output.
 
@@ -35,7 +41,17 @@ Before ANY of the following operations, you MUST stop and ask: **"Delegate to De
 > Delegate to DeepSeek? (y/n)
 ```
 
-**If y/yes:** Call `deepseek` tool with model `deepseek-v4-pro`. Announce `> Delegating to DeepSeek (deepseek-v4-pro)...`
+**If y/yes:** Call the `delegate` tool. Set `task` so routing picks the right model:
+- `task: "read"` — summarize/analyze/extract from large inputs
+- `task: "write"` — generate code or docs
+- `task: "reason"` — math, logic, architecture decisions
+
+Add `model` only to override routing — a bare id or `provider:model`
+(e.g. `moonshot:kimi-k2.5`). Announce `> Delegating to <provider> (<model>)…`
+
+**If the user keeps a shortlist** (`"mode": "ask"` in `~/.claude/delegator.json`):
+first present the shortlist with the AskUserQuestion tool (one option per model,
+price as the description), then call `delegate` with `model` set to the choice.
 
 **If n/no:** Proceed yourself.
 
@@ -45,54 +61,27 @@ Before ANY of the following operations, you MUST stop and ask: **"Delegate to De
 
 ```
 // RIGHT — file bytes never touch Claude's context
-deepseek(prompt: "Audit for bugs", files: ["/abs/path/a.py", "/abs/path/b.py"])
+delegate(prompt: "Audit for bugs", task: "read", files: ["/abs/path/a.py", "/abs/path/b.py"])
 
-// WRONG — reads files into Claude's context first, then forwards to DeepSeek
-<read files> → deepseek(prompt: "Audit for bugs\n\n```python\n[file contents]\n```")
+// WRONG — reads files into Claude's context first, then forwards them
+<read files> → delegate(prompt: "Audit for bugs\n\n```python\n[file contents]\n```")
 ```
 
-Synthesize result, don't echo verbatim.
+Synthesize the result, don't echo it verbatim.
 
-Use `deepseek-v4-flash` only for quick summaries/drafts where speed > depth.
+**Every `delegate` result ends with a cost receipt.** Surface its savings line
+to the user — never silently drop it.
 
-## PreToolUse Hooks (stronger enforcement)
+> The v2 tool names `deepseek` / `deepseek_models` still work as aliases.
 
-### Block large file reads
+## PreToolUse hooks (stronger enforcement)
 
-Add this hook to block `Read` calls on files over 300 lines, forcing delegation instead:
+`init` installs zero-dependency `node -e` hooks that nudge the gate before
+large file reads and skill loads, plus a `PostToolUse` hook that displays the
+cost receipt deterministically. Run it once instead of maintaining hooks by
+hand:
 
-```json
-{
-  "matcher": "Read",
-  "hooks": [
-    {
-      "type": "command",
-      "command": "jq -r '.tool_input.file_path // empty' | { read -r f; if [ -z \"$f\" ]; then exit 0; fi; lines=$(wc -l < \"$f\" 2>/dev/null | tr -d ' '); if [ \"$lines\" -gt 300 ]; then jq -n --argjson l \"$lines\" --arg p \"$f\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",additionalContext:(\"READ BLOCKED: \"+$p+\" is \"+($l|tostring)+\" lines. Do NOT read this file into context. Estimate scope and ask the user: Delegate to DeepSeek? (y/n). If yes, pass the path via files[] to deepseek() — never load large files into Claude context first.\")}}'; fi; }"
-    }
-  ]
-}
+```bash
+npx claude-code-deepseek-delegator init
+npx claude-code-deepseek-delegator doctor   # live-fires the hooks to prove the gate works
 ```
-
-### Block large skill invocations
-
-Add this to `~/.claude/settings.json` so the gate fires automatically before every Skill invocation:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "jq '{hookSpecificOutput: {hookEventName: \"PreToolUse\", additionalContext: (\"DEEPSEEK GATE — skill: \" + (.tool_input.skill // \"?\") + \". Estimate total token cost BEFORE loading this skill. If the resulting work involves >200 lines of code, >3 files, >4k tokens output, or analysis of large content — STOP and ask the user: Delegate to DeepSeek? (y/n). This is mandatory. No exceptions. No rationalising.\")}}'"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-This injects a reminder into the model context before every skill load — the gate cannot be rationalized away.

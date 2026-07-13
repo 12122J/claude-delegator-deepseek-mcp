@@ -1,37 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="470" viewBox="0 0 860 470" font-family="'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="14">
-  <!-- `npx claude-code-deepseek-delegator init` — full disclosure, then aligned ✓ rows. Text mirrors src/setup/init.mjs verbatim. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="1053" viewBox="0 0 860 1053" font-family="&quot;SF Mono&quot;, SFMono-Regular, Menlo, Consolas, &quot;Liberation Mono&quot;, monospace" font-size="13">
   <defs>
-    <clipPath id="win"><rect x="0" y="0" width="860" height="470" rx="12"/></clipPath>
+    <clipPath id="win"><rect x="1" y="1" width="858" height="1051" rx="10"/></clipPath>
   </defs>
+  <!-- window -->
+  <rect x="1" y="1" width="858" height="1051" rx="10" fill="#ffffff" stroke="#d0d0d0"/>
   <g clip-path="url(#win)">
-    <rect width="860" height="470" rx="12" fill="#1a1b26"/>
-    <rect width="860" height="40" fill="#16161e"/>
-    <circle cx="24" cy="20" r="6" fill="#f7768e"/>
-    <circle cx="44" cy="20" r="6" fill="#e0af68"/>
-    <circle cx="64" cy="20" r="6" fill="#9ece6a"/>
-    <text x="430" y="25" text-anchor="middle" fill="#565f89" font-size="12">npx claude-code-deepseek-delegator init</text>
-
-    <text x="32" y="76" fill="#c0caf5"><tspan fill="#7dcfff">◆</tspan> <tspan font-weight="bold">claude-code-deepseek-delegator</tspan> <tspan fill="#565f89">· init</tspan></text>
-    <text x="32" y="100" fill="#565f89">────────────────────────────────────────────────────────────────</text>
-
-    <text x="32" y="132" fill="#c0caf5" font-weight="bold">This makes 3 changes to your Claude Code config:</text>
-
-    <text x="48" y="164" fill="#c0caf5"><tspan font-weight="bold">1. CLAUDE.md</tspan>   <tspan fill="#565f89">~/.claude/CLAUDE.md</tspan></text>
-    <text x="64" y="184" fill="#c0caf5">Appends one fenced block — the delegation rules. <tspan fill="#565f89">Nothing is overwritten.</tspan></text>
-
-    <text x="48" y="216" fill="#c0caf5"><tspan font-weight="bold">2. settings.json</tspan>   <tspan fill="#565f89">~/.claude/settings.json</tspan></text>
-    <text x="64" y="236" fill="#c0caf5">Two PreToolUse gates + one PostToolUse hook that shows the</text>
-    <text x="64" y="256" fill="#c0caf5"><tspan font-weight="bold">cost + savings</tspan> after every deepseek call. Never blocks or modifies.</text>
-
-    <text x="48" y="288" fill="#c0caf5"><tspan font-weight="bold">3. MCP server</tspan>   registers "deepseek" <tspan fill="#565f89">(npx -y claude-code-deepseek-delegator)</tspan></text>
-
-    <text x="32" y="320" fill="#565f89">Reversible anytime: npx claude-code-deepseek-delegator uninstall</text>
-    <text x="32" y="340" fill="#565f89">A timestamped backup is written before any file changes.</text>
-
-    <text x="32" y="372" fill="#c0caf5">Apply these changes? (y/N): <tspan font-weight="bold">y</tspan></text>
-
-    <text x="32" y="404" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="bold">MCP server</tspan>  registered via claude mcp add-json</text>
-    <text x="32" y="424" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="bold">CLAUDE.md</tspan>   installed the delegation rules</text>
-    <text x="32" y="444" fill="#c0caf5"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="bold">hooks</tspan>       installed Read + Skill gates + cost display</text>
+    <rect x="0" y="0" width="860" height="44" fill="#f0f0f0"/>
+    <line x1="0" y1="44" x2="860" y2="44" stroke="#dcdcdc"/>
   </g>
+  <circle cx="26" cy="22" r="6.5" fill="#ff5f57"/>
+  <circle cx="48" cy="22" r="6.5" fill="#febc2e"/>
+  <circle cx="70" cy="22" r="6.5" fill="#28c840"/>
+  <text x="430" y="26" text-anchor="middle" fill="#7a7a7a" font-size="12">javi — deepseek-delegator init — 96×44</text>
+  <text x="26" y="75" xml:space="preserve"><tspan fill="#2d2d2d">$ </tspan><tspan fill="#2d2d2d" font-weight="600">npx claude-code-deepseek-delegator init</tspan></text>
+  <text x="26" y="113" xml:space="preserve"><tspan fill="#9a9a9a">┌  </tspan><tspan fill="#2d2d2d" font-weight="600">claude-code-deepseek-delegator </tspan><tspan fill="#9a9a9a">v3.0.0</tspan></text>
+  <text x="26" y="132" xml:space="preserve"><tspan fill="#9a9a9a">│  delegate heavy work from Claude Code to a cheaper model · ~1 minute</tspan></text>
+  <text x="26" y="151" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="170" xml:space="preserve"><tspan fill="#188038">◇  </tspan><tspan fill="#2d2d2d" font-weight="600">Provider</tspan></text>
+  <text x="26" y="189" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#2d2d2d">DeepSeek</tspan></text>
+  <text x="26" y="208" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="227" xml:space="preserve"><tspan fill="#188038">◇  </tspan><tspan fill="#2d2d2d" font-weight="600">API key</tspan></text>
+  <text x="26" y="246" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#188038">DEEPSEEK_API_KEY detected ✓</tspan></text>
+  <text x="26" y="265" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="284" xml:space="preserve"><tspan fill="#188038">◇  </tspan><tspan fill="#2d2d2d" font-weight="600">Key verified — DeepSeek answered </tspan><tspan fill="#9a9a9a">(deepseek-v4-flash)</tspan></text>
+  <text x="26" y="303" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="322" xml:space="preserve"><tspan fill="#0e7490">◆  </tspan><tspan fill="#2d2d2d" font-weight="600">Which model runs your delegations?</tspan><tspan fill="#9a9a9a">  ↑↓ · enter</tspan></text>
+  <text x="26" y="341" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#0e7490">● </tspan><tspan fill="#2d2d2d" font-weight="600">Smart split (recommended)</tspan><tspan fill="#9a9a9a">  v4-flash digests big files · v4-pro writes code and reasons</tspan></text>
+  <text x="26" y="360" xml:space="preserve"><tspan fill="#9a9a9a">│  ○ Ask me each time  choose from a shortlist in Claude Code’s picker</tspan></text>
+  <text x="26" y="379" xml:space="preserve"><tspan fill="#9a9a9a">│  ○ Always the best  deepseek-v4-pro for everything</tspan></text>
+  <text x="26" y="398" xml:space="preserve"><tspan fill="#9a9a9a">│  ○ Always the cheapest  deepseek-v4-flash for everything</tspan></text>
+  <text x="26" y="417" xml:space="preserve"><tspan fill="#9a9a9a">│  ○ Custom…  pick a model for each kind of work</tspan></text>
+  <text x="26" y="436" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="455" xml:space="preserve"><tspan fill="#188038">◇  </tspan><tspan fill="#2d2d2d" font-weight="600">Savings baseline — the &quot;vs Claude&quot; line on cost receipts</tspan></text>
+  <text x="26" y="474" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#2d2d2d">Opus 4.8 (recommended)</tspan></text>
+  <text x="26" y="493" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="512" xml:space="preserve"><tspan fill="#9a9a9a">│  ╭─ </tspan><tspan fill="#2d2d2d" font-weight="600">4 changes to your Claude Code setup</tspan><tspan fill="#9a9a9a"> ───────────────────────────────╮</tspan></text>
+  <text x="26" y="531" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">delegator.json</tspan><tspan fill="#2d2d2d">   provider, routing, baseline</tspan><tspan fill="#2d2d2d">                       </tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="550" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">CLAUDE.md</tspan><tspan fill="#2d2d2d">        delegation rules block </tspan><tspan fill="#9a9a9a">— your content untouched</tspan><tspan fill="#2d2d2d">   </tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="569" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">settings.json</tspan><tspan fill="#2d2d2d">    2 nudge hooks + the cost receipt </tspan><tspan fill="#9a9a9a">— never blocks</tspan><tspan fill="#2d2d2d">   </tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="588" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">MCP server</tspan><tspan fill="#2d2d2d">       &quot;deepseek&quot; </tspan><tspan fill="#9a9a9a">(npx -y claude-code-deepseek-delegator)</tspan><tspan fill="#2d2d2d"></tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="607" xml:space="preserve"><tspan fill="#9a9a9a">│  ╰─────────────────────────────────────────────────────────────────────╯</tspan></text>
+  <text x="26" y="626" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="645" xml:space="preserve"><tspan fill="#188038">◇  </tspan><tspan fill="#2d2d2d" font-weight="600">Apply these changes?</tspan></text>
+  <text x="26" y="664" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#2d2d2d">Apply</tspan></text>
+  <text x="26" y="683" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="702" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#188038">✓ </tspan><tspan fill="#2d2d2d" font-weight="600">config    </tspan><tspan fill="#2d2d2d"> wrote provider/routing/baseline</tspan></text>
+  <text x="26" y="721" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#188038">✓ </tspan><tspan fill="#2d2d2d" font-weight="600">MCP server</tspan><tspan fill="#2d2d2d"> registered &quot;deepseek&quot; </tspan><tspan fill="#9a9a9a">(user scope)</tspan></text>
+  <text x="26" y="740" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#188038">✓ </tspan><tspan fill="#2d2d2d" font-weight="600">CLAUDE.md </tspan><tspan fill="#2d2d2d"> installed the delegation rules</tspan></text>
+  <text x="26" y="759" xml:space="preserve"><tspan fill="#9a9a9a">│  </tspan><tspan fill="#188038">✓ </tspan><tspan fill="#2d2d2d" font-weight="600">hooks     </tspan><tspan fill="#2d2d2d"> installed Read + Skill gates + cost display</tspan></text>
+  <text x="26" y="778" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="797" xml:space="preserve"><tspan fill="#9a9a9a">│  ╭─ </tspan><tspan fill="#188038">✓ </tspan><tspan fill="#2d2d2d" font-weight="600">delegation is wired</tspan><tspan fill="#9a9a9a"> ────────╮</tspan></text>
+  <text x="26" y="816" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">provider</tspan><tspan fill="#2d2d2d">   DeepSeek </tspan><tspan fill="#9a9a9a">(deepseek)</tspan><tspan fill="#2d2d2d"></tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="835" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">read</tspan><tspan fill="#2d2d2d">    </tspan><tspan fill="#9a9a9a">→</tspan><tspan fill="#2d2d2d">  deepseek-v4-flash</tspan><tspan fill="#2d2d2d">  </tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="854" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">write</tspan><tspan fill="#2d2d2d">   </tspan><tspan fill="#9a9a9a">→</tspan><tspan fill="#2d2d2d">  deepseek-v4-pro</tspan><tspan fill="#2d2d2d">    </tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="873" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">reason</tspan><tspan fill="#2d2d2d">  </tspan><tspan fill="#9a9a9a">→</tspan><tspan fill="#2d2d2d">  deepseek-v4-pro</tspan><tspan fill="#2d2d2d">    </tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="892" xml:space="preserve"><tspan fill="#9a9a9a">│  │ </tspan><tspan fill="#2d2d2d" font-weight="600">baseline</tspan><tspan fill="#2d2d2d">   opus-4.8</tspan><tspan fill="#2d2d2d">           </tspan><tspan fill="#9a9a9a"> │</tspan></text>
+  <text x="26" y="911" xml:space="preserve"><tspan fill="#9a9a9a">│  ╰────────────────────────────────╯</tspan></text>
+  <text x="26" y="930" xml:space="preserve"><tspan fill="#9a9a9a">│</tspan></text>
+  <text x="26" y="949" xml:space="preserve"><tspan fill="#9a9a9a">└  </tspan><tspan fill="#188038">Done.</tspan><tspan fill="#2d2d2d"> Restart Claude Code — heavy tasks will prompt </tspan><tspan fill="#2d2d2d" font-weight="600">&quot;Delegate to DeepSeek? (y/n)&quot;</tspan></text>
+  <text x="26" y="968" xml:space="preserve"><tspan fill="#9a9a9a">   try:      claude &quot;use delegate to summarize README.md&quot;</tspan></text>
+  <text x="26" y="987" xml:space="preserve"><tspan fill="#9a9a9a">   verify:   npx claude-code-deepseek-delegator doctor</tspan></text>
+  <text x="26" y="1025" xml:space="preserve"><tspan fill="#b26a00">   ★ </tspan><tspan fill="#9a9a9a">enjoying it? a star helps others find it → github.com/12122J/claude-delegator-deepseek-mcp</tspan></text>
 </svg>

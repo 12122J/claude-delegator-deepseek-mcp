@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { ok, equal, deepEqual } from 'node:assert/strict';
 import {
-  upsertBlock, removeBlock, hasBlock,
+  upsertBlock, removeBlock, hasBlock, managedRules,
   addHooks, removeHooks, managedHooks, managedPostHooks,
   readJsonSafe, MARKER, BLOCK_BEGIN, BLOCK_END,
 } from '../src/setup/wiring.mjs';
@@ -44,6 +44,61 @@ test('upsertBlock works on a brand new (empty) file', () => {
   ok(hasBlock(out));
 });
 
+test('managedRules names the provider (string back-compat) and the delegate tool', () => {
+  const rules = managedRules('Moonshot');
+  ok(rules.includes('Delegate to Moonshot? (y/n)'), 'gate names the provider');
+  ok(rules.includes('`delegate` tool'), 'references the v3 tool');
+  ok(rules.includes('`task`'), 'teaches the task param');
+  ok(rules.includes('AskUserQuestion'), 'gate goes through the native picker');
+  ok(rules.includes('⎿ delegate ·'), 'prescribes the scope-line format');
+});
+
+test('managedRules: cross-provider routing gets a neutral gate + the table', () => {
+  const rules = managedRules({
+    gateQuestion: 'Delegate? (y/n)',
+    routingInfo: [
+      { task: 'read', model: 'deepseek-v4-flash', provider: 'DeepSeek', blurb: 'digest big inputs' },
+      { task: 'write', model: 'glm-4.6', provider: 'Z.AI', blurb: 'generate code' },
+      { task: 'reason', model: 'glm-4.6', provider: 'Z.AI', blurb: 'logic' },
+    ],
+  });
+  ok(rules.includes('**"Delegate? (y/n)"**'), 'neutral question, no single provider named');
+  ok(!rules.includes('Delegate to '), 'the lying single-provider gate is gone');
+  ok(rules.includes('read → `deepseek-v4-flash` via DeepSeek'), 'routing table names true targets');
+  ok(rules.includes('write → `glm-4.6` via Z.AI'));
+});
+
+test('managedRules with a shortlist wires the AskUserQuestion model picker', () => {
+  const rules = managedRules({
+    gateQuestion: 'Delegate? (y/n)',
+    shortlist: [
+      { spec: 'deepseek-v4-pro', hint: '$0.435/$0.87 per 1M · DeepSeek' },
+      { spec: 'moonshot:kimi-k2.5', hint: '' },
+    ],
+  });
+  ok(rules.includes('second AskUserQuestion'), 'model choice is a second native picker');
+  ok(rules.includes('`deepseek-v4-pro` — $0.435/$0.87 per 1M · DeepSeek'), 'lists shortlist entries with prices');
+  ok(rules.includes('`moonshot:kimi-k2.5`'), 'cross-provider spec included');
+  ok(!rules.includes('with `task` set'), 'ask mode replaces the routing bullet');
+});
+
+test('managedHooks: neutral question and read target reach the hook commands', () => {
+  const hooks = managedHooks({ gateQuestion: 'Delegate? (y/n)', readTarget: 'deepseek-v4-flash via DeepSeek' });
+  const read = hooks.find((h) => h.matcher === 'Read').hooks[0].command;
+  ok(read.includes('Delegate? (y/n)'), 'read hook asks the neutral question');
+  ok(read.includes('deepseek-v4-flash via DeepSeek'), 'read hook names the routed target');
+  const skill = hooks.find((h) => h.matcher === 'Skill').hooks[0].command;
+  ok(skill.includes('Delegate? (y/n)'));
+});
+
+test('managedRules sanitizes hostile provider names', () => {
+  const rules = managedRules('Evil"; rm -rf / #');
+  ok(rules.includes('Delegate to Evil rm -rf  ? (y/n)') === false, 'quotes stripped');
+  ok(!rules.includes('"'.repeat(2)), 'no unescaped quote pairs');
+  const hooks = managedHooks('Bad`Name"');
+  ok(!hooks[0].hooks[0].command.includes('`Name'), 'backtick stripped from hook command');
+});
+
 test('removeBlock removes only our block and preserves the rest', () => {
   const out = upsertBlock('# Keep me\n\nKeep this line too.\n');
   const removed = removeBlock(out);
@@ -75,7 +130,7 @@ test('addHooks adds our three hooks and preserves the user’s existing hooks', 
   ok(out.hooks.PreToolUse.some((e) => e.matcher === 'Read' && e._managedBy === MARKER));
   ok(out.hooks.PreToolUse.some((e) => e.matcher === 'Skill' && e._managedBy === MARKER));
   equal(out.hooks.PostToolUse.length, 1, 'our cost hook');
-  ok(out.hooks.PostToolUse.some((e) => e.matcher === '^mcp__deepseek__deepseek$' && e._managedBy === MARKER));
+  ok(out.hooks.PostToolUse.some((e) => e.matcher === '^mcp__(deepseek|delegate)__(deepseek|delegate)$' && e._managedBy === MARKER), 'cost hook matches both tool names');
   deepEqual(out.permissions, { allow: ['Bash'] }, 'unrelated settings untouched');
 });
 

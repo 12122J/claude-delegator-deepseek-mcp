@@ -5,7 +5,8 @@
 
 import { createRequire } from 'node:module';
 import { handleToolCall, TOOLS } from './tools.mjs';
-import { getDefaultModel } from './models.mjs';
+import { listProviders } from './providers/registry.mjs';
+import { loadConfig } from './config.mjs';
 import { parseLines } from './framing.mjs';
 
 const PROTOCOL_VERSION = '2024-11-05';
@@ -126,14 +127,19 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Startup log to stderr (not stdout — MCP uses stdout for JSON-RPC)
-if (!process.env.DEEPSEEK_API_KEY) {
+const startupConfig = loadConfig();
+const availableProviders = listProviders().filter((p) => p.available).map((p) => p.id);
+if (availableProviders.length === 0) {
   process.stderr.write(
-    'WARNING: DEEPSEEK_API_KEY is not set. The server will start, but every ' +
-    'deepseek tool call will fail with a 401 until you add the key to the "env" ' +
-    'block of this server in your MCP config (e.g. ~/.claude/mcp.json).\n'
+    'WARNING: no provider API key found (e.g. DEEPSEEK_API_KEY). The server will ' +
+    'start, but every delegate call will fail with a 401 until you set a key. ' +
+    'Run `npx claude-code-deepseek-delegator init` to set one up.\n'
   );
 }
-process.stderr.write(`${SERVER_NAME} v${SERVER_VERSION} ready. Default model: ${getDefaultModel()}\n`);
+process.stderr.write(
+  `${SERVER_NAME} v${SERVER_VERSION} ready. Active provider: ${startupConfig.provider}` +
+  (availableProviders.length ? ` · keys: ${availableProviders.join(', ')}` : '') + '\n'
+);
 
 // ── CLI handlers (only reached via the SUBCOMMAND branch above) ──
 // Declarations are hoisted, so the early call works. Setup modules are loaded
@@ -161,22 +167,28 @@ async function runCli(sub, args) {
 
 function printHelp() {
   console.log(`
-claude-code-deepseek-delegator — delegate heavy tasks from Claude Code to DeepSeek
+claude-code-deepseek-delegator — delegate heavy tasks from Claude Code to a cheaper model
+(DeepSeek, Kimi, GLM, Qwen, Grok, Groq, OpenRouter, or any OpenAI-compatible endpoint)
 
 Usage:
   npx claude-code-deepseek-delegator <command>
 
 Commands:
   (no command)   Run the MCP server (this is how Claude Code launches it)
-  init           Fully wire into Claude Code: MCP server + CLAUDE.md rules + hooks
-  doctor         Verify the install and live-fire the gate hooks
-  uninstall      Cleanly remove everything init added
+  init           Interactive setup wizard: provider, key, routing, rules, hooks
+  doctor         Verify the install, resolve the config, live-fire the gate hooks
+  uninstall      Cleanly remove everything init added (incl. delegator.json)
   help           Show this help
   --version      Print version
 
 init options:
-  --dry-run      Show what would change, write nothing
-  --no-hooks     Skip the settings.json hooks (rules-only, softer gate)
-  --yes, -y      Non-interactive (don't prompt for the API key)
+  --dry-run             Show what would change, write nothing
+  --no-hooks            Skip the settings.json hooks (rules-only, softer gate)
+  --yes, -y             Non-interactive, v2-identical defaults
+  --provider <id>       deepseek · moonshot · zai · zhipu · alibaba-singapore · groq · xai · openrouter
+  --key <key>           API key (else env var / prompt)
+  --preset <name>       balanced · cheapest · max
+  --mode <name>         auto (route by task) · ask (shortlist picker)
+  --baseline <name>     opus · sonnet · none
 `);
 }

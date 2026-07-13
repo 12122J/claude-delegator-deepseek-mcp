@@ -1,7 +1,7 @@
 {
   "name": "claude-code-deepseek-delegator",
-  "version": "2.7.0",
-  "description": "MCP server that lets Claude Code delegate heavy-token tasks to DeepSeek. Claude orchestrates; DeepSeek does the heavy lifting. Zero dependencies.",
+  "version": "3.0.0",
+  "description": "MCP server that lets Claude Code delegate heavy-token tasks to DeepSeek, Kimi, GLM, Qwen, Grok, or any OpenAI-compatible model. Claude orchestrates; the delegate does the heavy lifting. Zero dependencies.",
   "type": "module",
   "bin": {
     "claude-code-deepseek-delegator": "src/index.mjs"
@@ -27,7 +27,27 @@
     "orchestration",
     "token-optimization",
     "cost-savings",
-    "model-context-protocol"
+    "model-context-protocol",
+    "model-agnostic",
+    "openrouter",
+    "kimi",
+    "glm",
+    "qwen",
+    "providers",
+    "mcp-server",
+    "llm",
+    "ai-agent",
+    "cli",
+    "anthropic",
+    "moonshot",
+    "zhipu",
+    "grok",
+    "groq",
+    "ollama",
+    "openai-compatible",
+    "llm-router",
+    "subagent",
+    "token-savings"
   ],
   "repository": {
     "type": "git",
@@ -36,5 +56,10 @@
   "license": "MIT",
   "engines": {
     "node": ">=20"
+  },
+  "author": "Javi (https://github.com/12122J)",
+  "homepage": "https://github.com/12122J/claude-delegator-deepseek-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/12122J/claude-delegator-deepseek-mcp/issues"
   }
 }

@@ -10,6 +10,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { managedHooks, managedPostHooks } from '../src/setup/wiring.mjs';
 import { buildFooter } from '../src/pricing.mjs';
+import { resolveModel } from '../src/providers/registry.mjs';
+
+// The real registry entry, so the footer round-trip uses real pricing.
+const CTX = resolveModel('deepseek:deepseek-v4-pro');
 
 const hooks = managedHooks();
 const readHook = hooks.find((h) => h.matcher === 'Read').hooks[0].command;
@@ -46,6 +50,14 @@ test('Read hook is silent when there is no file_path', () => {
   equal(out, '');
 });
 
+test('Read hook is silent on binary files — "lines" mean nothing in a PNG', () => {
+  const f = join(mkdtempSync(join(tmpdir(), 'hk-')), 'img.png');
+  // many newline bytes (>300 "lines") but with NUL bytes like any real binary
+  writeFileSync(f, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]), Buffer.alloc(400, 0x0a), Buffer.from([0x00])]));
+  const { out } = fire(readHook, { tool_input: { file_path: f } });
+  equal(out, '', 'no gate for binary content');
+});
+
 test('Skill hook fires the gate and names the skill', () => {
   const { out } = fire(skillHook, { tool_input: { skill: 'seo-audit' } });
   const parsed = JSON.parse(out);
@@ -66,10 +78,10 @@ test('hooks never crash on malformed stdin', () => {
 test('cost hook surfaces the real pricing.mjs footer as a systemMessage', () => {
   const footer = buildFooter(
     { usage: { promptTokens: 12345, completionTokens: 678, totalTokens: 13023 } },
-    'deepseek-v4-pro'
+    CTX
   );
   const { out } = fire(costHook, {
-    tool_name: 'mcp__deepseek__deepseek',
+    tool_name: 'mcp__delegate__delegate',
     tool_response: { content: [{ type: 'text', text: 'the actual answer\n' + footer }] },
   });
   ok(out.length > 0, 'hook produced output');
@@ -84,7 +96,7 @@ test('cost hook surfaces the real pricing.mjs footer as a systemMessage', () => 
 test('cost hook handles the streamed shape (footer in the last content item)', () => {
   const footer = buildFooter(
     { usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 } },
-    'deepseek-v4-pro'
+    CTX
   );
   const { out } = fire(costHook, {
     tool_response: { content: [{ type: 'text', text: 'chunk 1' }, { type: 'text', text: 'chunk 2' }, { type: 'text', text: footer }] },
@@ -101,7 +113,7 @@ test('cost hook stays silent when there is no cost marker', () => {
 });
 
 test('cost hook stays silent when usage was missing (empty footer)', () => {
-  const footer = buildFooter({ usage: null }, 'deepseek-v4-pro');
+  const footer = buildFooter({ usage: null }, CTX);
   equal(footer, '', 'no footer without usage');
   const { out } = fire(costHook, {
     tool_response: { content: [{ type: 'text', text: 'answer' + footer }] },

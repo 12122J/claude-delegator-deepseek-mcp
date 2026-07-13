@@ -1,13 +1,18 @@
 // `claude-code-deepseek-delegator doctor` — verify a real install end to end.
 // Goes beyond "files exist": it actually FIRES the installed hooks with sample
-// input and confirms the gate text comes out. That is the closest thing to a
-// deterministic "the delegation gate works" check without a live model.
+// input and confirms the gate text comes out, and resolves every configured
+// routing target against the provider registry. That is the closest thing to
+// a deterministic "the delegation gate works" check without a live model.
 
 import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { paths, readJsonSafe, hasBlock, MARKER } from './wiring.mjs';
+import { paths, readJsonSafe, hasBlock, storedMcpEnv, isManagedHook, PKG_NAME, REPO_URL, MCP_KEYS } from './wiring.mjs';
+import { getProvider, resolveApiKey, keyEnvVar, resolveModel } from '../providers/registry.mjs';
+import { loadConfig, TASKS } from '../config.mjs';
+import { intro, outro, bar } from './tui.mjs';
+import { color, dim } from '../colors.mjs';
 
 function has(cmd, args = ['--version']) {
   try { return spawnSync(cmd, args, { stdio: 'ignore' }).status === 0; } catch { return false; }
@@ -25,86 +30,111 @@ function bigFile(lines) {
   return f;
 }
 
+// The gate question names whatever provider the user chose — match its shape.
+const gateFired = (out) => out.includes('Delegate to ') && out.includes('? (y/n)');
+
 export async function runDoctor() {
   const p = paths();
   const results = [];
   const add = (ok, label, hint) => results.push({ ok, label, hint });
 
-  console.log('\nclaude-code-deepseek-delegator · doctor\n');
-  console.log(`  config dir: ${p.claudeDir}\n`);
+  console.log('');
+  intro(`${PKG_NAME} ${dim('· doctor')}`, `config dir: ${p.claudeDir}`);
 
   // 1) Node present (the hooks need it)
   add(has('node'), 'Node.js available on PATH (required for the hooks)', 'Install Node 20+ and ensure `node` is on PATH.');
 
-  // 2) MCP server registered (CLI-authoritative, with file fallback check)
-  let mcpOk = false;
-  if (has('claude')) {
-    mcpOk = spawnSync('claude', ['mcp', 'get', 'deepseek'], { stdio: 'ignore' }).status === 0;
+  // 2) delegation config + registry resolution
+  const cfg = loadConfig();
+  const provider = getProvider(cfg.provider);
+  add(!!provider, `Active provider "${cfg.provider}" exists in the registry`, `Run: npx ${PKG_NAME} init`);
+  if (provider) {
+    // every referenced provider (routing may mix providers) needs its own key
+    const referenced = new Map([[provider.id, provider]]);
+    const checkSpec = (kind, spec) => {
+      try {
+        const r = resolveModel(spec, cfg.provider);
+        referenced.set(r.provider.id, r.provider);
+        add(true, `${kind} "${spec}" resolves${r.provider.id !== provider.id ? ` (${r.provider.name})` : ''}`, '');
+      } catch (e) {
+        add(false, `${kind} "${spec}" resolves`, e.message);
+      }
+    };
+    for (const task of TASKS) checkSpec(`Routing "${task}" →`, cfg.routing[task]);
+    for (const spec of cfg.shortlist) checkSpec('Shortlist', spec);
+    // resolveApiKey covers shell env AND the MCP-config keyring; the label
+    // says which one answered
+    for (const p of referenced.values()) {
+      const envVar = keyEnvVar(p);
+      const inEnv = !!(envVar && process.env[envVar]);
+      add(!!resolveApiKey(p),
+        `${p.name} API key is set${envVar ? ` (${envVar}${!inEnv && storedMcpEnv()[envVar] ? ', in MCP config' : ''})` : ''}`,
+        `Export ${envVar || 'the key'} in your shell profile, or re-run init and paste it.`);
+    }
   }
-  if (!mcpOk) {
+
+  // 3) MCP server registered (CLI-authoritative, with file fallback check;
+  //    either key counts — "delegate" is current, "deepseek" is v2)
+  let mcpKey = null;
+  for (const k of MCP_KEYS) {
+    if (has('claude') && spawnSync('claude', ['mcp', 'get', k], { stdio: 'ignore' }).status === 0) { mcpKey = k; break; }
     const res = readJsonSafe(p.legacyMcpJson);
-    mcpOk = !!(res.ok && res.data?.mcpServers?.deepseek);
+    if (res.ok && res.data?.mcpServers?.[k]) { mcpKey = k; break; }
   }
-  add(mcpOk, 'MCP server "deepseek" registered with Claude Code', 'Run: npx claude-code-deepseek-delegator init');
+  add(!!mcpKey, `MCP server registered with Claude Code${mcpKey ? ` ("${mcpKey}")` : ''}`, `Run: npx ${PKG_NAME} init`);
 
-  // 3) CLAUDE.md rules present
+  // 4) CLAUDE.md rules present
   const md = existsSync(p.claudeMd) ? readFileSync(p.claudeMd, 'utf8') : '';
-  add(hasBlock(md), 'Auto-delegation rules present in CLAUDE.md', 'Run: npx claude-code-deepseek-delegator init');
+  add(hasBlock(md), 'Auto-delegation rules present in CLAUDE.md', `Run: npx ${PKG_NAME} init`);
 
-  // 4) Hooks present in settings.json
+  // 5) Hooks present in settings.json
   const sres = readJsonSafe(p.settingsJson);
-  const installedHooks = sres.ok ? (sres.data?.hooks?.PreToolUse || []).filter((e) => e._managedBy === MARKER) : [];
-  const installedPostHooks = sres.ok ? (sres.data?.hooks?.PostToolUse || []).filter((e) => e._managedBy === MARKER) : [];
+  // signature-based: Claude Code strips the _managedBy tag when it rewrites
+  // settings.json, so the tag alone would report installed hooks as missing
+  const installedHooks = sres.ok ? (sres.data?.hooks?.PreToolUse || []).filter(isManagedHook) : [];
+  const installedPostHooks = sres.ok ? (sres.data?.hooks?.PostToolUse || []).filter(isManagedHook) : [];
   if (!sres.ok) add(false, 'settings.json is valid JSON', `Fix ${p.settingsJson} (it is currently malformed), then re-run init.`);
-  add(installedHooks.length === 2, `PreToolUse hooks installed (found ${installedHooks.length}/2)`, 'Run: npx claude-code-deepseek-delegator init');
-  add(installedPostHooks.length === 1, `PostToolUse cost hook installed (found ${installedPostHooks.length}/1)`, 'Run: npx claude-code-deepseek-delegator init');
+  add(installedHooks.length === 2, `PreToolUse hooks installed (found ${installedHooks.length}/2)`, `Run: npx ${PKG_NAME} init`);
+  add(installedPostHooks.length === 1, `PostToolUse cost hook installed (found ${installedPostHooks.length}/1)`, `Run: npx ${PKG_NAME} init`);
 
-  // 5) THE KEY CHECK — fire the installed hooks and confirm the gate fires.
+  // 6) THE KEY CHECK — fire the installed hooks and confirm the gate fires.
   if (installedHooks.length) {
     const read = installedHooks.find((e) => e.matcher === 'Read');
     const skill = installedHooks.find((e) => e.matcher === 'Skill');
     if (read) {
       const out = fireHook(read.hooks[0].command, JSON.stringify({ tool_input: { file_path: bigFile(301) } }));
-      add(out.includes('Delegate to DeepSeek? (y/n)'), 'Read gate FIRES on a >300-line file (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
+      add(gateFired(out), 'Read gate FIRES on a >300-line file (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
     }
     if (skill) {
       const out = fireHook(skill.hooks[0].command, JSON.stringify({ tool_input: { skill: 'demo' } }));
-      add(out.includes('Delegate to DeepSeek? (y/n)'), 'Skill gate FIRES on skill load (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
+      add(gateFired(out), 'Skill gate FIRES on skill load (live test)', 'The hook command did not emit the gate. Ensure `node` runs from a plain shell.');
     }
   }
   if (installedPostHooks.length) {
     const sample = {
-      tool_name: 'mcp__deepseek__deepseek',
-      tool_response: { content: [{ type: 'text', text: 'deepseek-cost:{"v":1,"line":"cost display self-test"}' }] },
+      tool_name: 'mcp__deepseek__delegate',
+      tool_response: { content: [{ type: 'text', text: 'deepseek-cost:{"v":2,"line":"cost display self-test"}' }] },
     };
     const out = fireHook(installedPostHooks[0].hooks[0].command, JSON.stringify(sample));
     add(out.includes('systemMessage') && out.includes('cost display self-test'),
-      'Cost display FIRES after a deepseek call (live test)',
+      'Cost display FIRES after a delegate call (live test)',
       'The cost hook did not emit a systemMessage. Ensure `node` runs from a plain shell.');
   }
 
-  // 6) API key resolvable at runtime
-  const envKey = !!process.env.DEEPSEEK_API_KEY;
-  const fileRes = readJsonSafe(p.legacyMcpJson);
-  const literalKey = (() => {
-    const v = fileRes.ok ? fileRes.data?.mcpServers?.deepseek?.env?.DEEPSEEK_API_KEY : null;
-    return typeof v === 'string' && v.startsWith('sk-') && !v.includes('REPLACE');
-  })();
-  add(envKey || literalKey, 'DeepSeek API key is set (env var or embedded in config)',
-    'Set DEEPSEEK_API_KEY in your shell profile, or paste the key into the MCP config env block.');
-
   // Report
-  console.log('  Checks:');
-  let allCritical = true;
+  let allGreen = true;
   for (const r of results) {
-    console.log(`    ${r.ok ? '✓' : '✗'} ${r.label}`);
-    if (!r.ok) { console.log(`        → ${r.hint}`); allCritical = false; }
+    bar(`${r.ok ? color('green', '✓') : color('red', '✗')} ${r.label}`);
+    if (!r.ok) { bar(`    ${color('yellow', '→')} ${dim(r.hint)}`); allGreen = false; }
   }
-  console.log('');
-  if (allCritical) {
-    console.log('  All green. The delegation gate is wired and firing. Restart Claude Code if you have not since installing.\n');
+  bar();
+  if (allGreen) {
+    outro([
+      `${color('green', 'All green.')} The delegation gate is wired and firing. ${dim('Restart Claude Code if you have not since installing.')}`,
+      dim(`★ saving money with this? star it → ${REPO_URL}`),
+    ]);
     return 0;
   }
-  console.log('  Some checks failed (see → hints above). Fix them and re-run `doctor`.\n');
+  outro(`${color('yellow', 'Some checks failed')} ${dim('(see → hints above). Fix them and re-run doctor.')}`);
   return 1;
 }

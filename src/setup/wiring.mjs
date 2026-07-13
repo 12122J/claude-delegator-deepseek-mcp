@@ -7,14 +7,22 @@
 //
 // Zero dependencies — Node.js built-ins only.
 
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import {
   readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, renameSync,
 } from 'node:fs';
+// Path resolution moved to src/paths.mjs (the runtime needs it too);
+// re-exported here so existing imports keep working.
+export { claudeDir, paths } from '../paths.mjs';
 
 export const PKG_NAME = 'claude-code-deepseek-delegator';
 export const MARKER = 'claude-code-deepseek-delegator';
+// MCP server keys: new installs register as "delegate" (that's the name
+// Claude Code shows on every call — "Calling delegate…"); "deepseek" is the
+// v2 key, still recognized everywhere so untouched installs keep working.
+// Order matters: first is what we write, the rest are legacy reads.
+export const MCP_KEYS = ['delegate', 'deepseek'];
+export const REPO_URL = 'https://github.com/12122J/claude-delegator-deepseek-mcp';
+export const AUTHOR = 'Javi (@12122J)';
 
 // Sentinels that fence our managed block inside CLAUDE.md. We only ever touch
 // text between these two lines.
@@ -25,11 +33,48 @@ export const BLOCK_END = '<!-- <<< claude-code-deepseek-delegator <<< -->';
 // be readable and honest: anyone opening their CLAUDE.md can see what it is, who
 // added it, and how to remove it. Carries the knowledge-transfer instruction
 // (files[] + synthesize) so delegation actually hands off context cleanly.
-export const MANAGED_RULES = `## Delegate heavy work to DeepSeek
+// Provider display names land inside shell-single-quoted `node -e` scripts and
+// double-quoted JS strings — restrict to characters safe in both.
+export function safeProviderName(name) {
+  const cleaned = String(name || '').replace(/[^A-Za-z0-9 ._-]/g, '').trim();
+  return cleaned || 'DeepSeek';
+}
+
+// The delegation rules written into CLAUDE.md. Everything user-visible at
+// delegation time is prescribed here, because whatever we don't specify,
+// Claude improvises (ugly and inconsistent next to init/doctor):
+//  - gateQuestion is derived from the ROUTING, not the primary provider — a
+//    gate that says "Delegate to Z.AI?" while routing sends reads to DeepSeek
+//    is a lie the user will catch on the first 402.
+//  - routingInfo prints the task table so Claude can name the true target in
+//    the scope line BEFORE asking.
+//  - the gate itself goes through AskUserQuestion (Claude Code's native
+//    picker) instead of free-form text.
+// Accepts a bare provider-name string for back-compat with v3.0 callers.
+export function managedRules(opts = {}) {
+  if (typeof opts === 'string') opts = { gateQuestion: `Delegate to ${safeProviderName(opts)}? (y/n)` };
+  const question = opts.gateQuestion || 'Delegate to DeepSeek? (y/n)';
+  const routingInfo = Array.isArray(opts.routingInfo) ? opts.routingInfo : null;
+  const shortlist = Array.isArray(opts.shortlist) ? opts.shortlist : [];
+
+  const routingSection = routingInfo
+    ? `Your routing (from \`~/.claude/delegator.json\` — the server enforces this; the table is here so you can NAME the true target):
+${routingInfo.map((r) => `- ${r.task} → \`${r.model}\` via ${r.provider}${r.blurb ? ` — ${r.blurb}` : ''}`).join('\n')}
+
+`
+    : '';
+
+  const yesBullet = shortlist.length > 0
+    ? `- If **Yes**: first ask which model with a second AskUserQuestion (header "Model", one option per entry below, its price as the description), then call the \`delegate\` tool with \`model\` set to the choice:
+${shortlist.map((s) => `  - \`${s.spec}\`${s.hint ? ` — ${s.hint}` : ''}`).join('\n')}
+  Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.`
+    : `- If **Yes**: call the \`delegate\` tool with \`task\` set to that same read/write/reason label. Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.`;
+
+  return `## Delegate heavy work
 
 _Added by \`${PKG_NAME} init\`. Safe to delete this whole block, or run \`npx ${PKG_NAME} uninstall\`._
 
-Before doing any of the following, STOP and ask the user, in these exact words: **"Delegate to DeepSeek? (y/n)"**
+${routingSection}Before doing any of the following, STOP and run the delegation gate:
 
 - reading or grepping more than ~300 lines total
 - writing or editing more than ~200 lines of code
@@ -37,24 +82,30 @@ Before doing any of the following, STOP and ask the user, in these exact words: 
 - reviewing 3+ files at once, or any task whose answer would exceed ~4k tokens
 - heavy reasoning (math, multi-step logic)
 
-Print a one-line scope estimate first, then the question. Example:
-\`\`\`
-> This analyzes ~800 lines across 4 files.
-> Delegate to DeepSeek? (y/n)
-\`\`\`
+The gate, exactly this shape (never free-form):
+1. Print ONE scope line in this format — task label and the true target${routingInfo ? ' from the routing table above' : ''}:
+   \`⎿ delegate · ~<lines> lines in <n> file(s) · <task> → <model> via <provider>\`
+2. Ask with the AskUserQuestion tool — header \`Delegate\`, question exactly **"${question}"**, two options: "Yes" (description: the model + provider that will run) and "No, do it in-context".
 
-- If the user says **y**: call the \`deepseek\` tool (model \`deepseek-v4-pro\`). Pass file paths in \`files[]\` so the bytes go straight to DeepSeek and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.
-- If the user says **n**: do it yourself.
-- Every \`deepseek\` result ends with a cost footer. When you reply, surface its savings line to the user (cost, savings vs Claude, tokens) — never silently drop it.`;
+${yesBullet}
+- If **No**: do it yourself.
+- Every \`delegate\` result ends with a cost footer. When you reply, surface its savings line to the user (cost, savings, tokens) — never silently drop it.`;
+}
+
+// Default rendering, used by upsertBlock when no provider was chosen (and by
+// tests). Named DeepSeek so a v2 install upgraded in place reads the same.
+export const MANAGED_RULES = managedRules();
 
 // The PreToolUse hooks (deterministic enforcement). Written as `node -e` one-
 // liners so they need NO extra tooling: Node is already present (Claude Code
 // runs on it), unlike `jq`, which macOS does not ship. The shell wraps the
 // script in single quotes, so the script itself uses only double quotes.
 // Tagged with _managedBy so uninstall removes exactly these.
-const READ_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),f=i.tool_input&&i.tool_input.file_path;if(!f)return;const fs=require("fs");if(!fs.existsSync(f))return;const n=fs.readFileSync(f,"utf8").split("\\n").length;if(n>300){process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: "+f+" is "+n+" lines — large enough to crowd Claude context. Before reading it, ask the user exactly: \\"Delegate to DeepSeek? (y/n)\\". If yes, pass the path in files[] to the deepseek tool so the bytes go straight to DeepSeek instead of being read into context."}}))}}catch(e){}})'`;
+// Hook nudges carry the gate question + (for reads) the true routed target,
+// so the deterministic layer says the same thing as the CLAUDE.md rules.
+const readHookCmd = (question, readTarget) => `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),f=i.tool_input&&i.tool_input.file_path;if(!f)return;const fs=require("fs");if(!fs.existsSync(f))return;const b=fs.readFileSync(f);if(b.includes(0))return;const n=b.toString("utf8").split("\\n").length;if(n>300){process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: "+f+" is "+n+" lines — large enough to crowd Claude context. Run the delegation gate before reading it: print the scope line (this is a read task${readTarget ? ' → ' + readTarget : ''}), then ask via AskUserQuestion exactly: \\"${question}\\". If yes, pass the path in files[] to the delegate tool so the bytes go straight to the delegate instead of being read into context."}}))}}catch(e){}})'`;
 
-const SKILL_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: about to load skill \\""+k+"\\". If the resulting work is large (>200 lines of code, >3 files, >4k tokens of output, or heavy analysis), first ask the user exactly: \\"Delegate to DeepSeek? (y/n)\\" before proceeding."}}))}catch(e){}})'`;
+const skillHookCmd = (question) => `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}"),k=(i.tool_input&&i.tool_input.skill)||"?";process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"NOTE: about to load skill \\""+k+"\\". If the resulting work is large (>200 lines of code, >3 files, >4k tokens of output, or heavy analysis), run the delegation gate first: scope line, then ask via AskUserQuestion exactly: \\"${question}\\" before proceeding."}}))}catch(e){}})'`;
 
 // PostToolUse cost display: after every deepseek call, find the flat
 // `deepseek-cost:{...}` marker the server appends to its footer (pricing.mjs)
@@ -64,40 +115,30 @@ const SKILL_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("e
 // both the buffered shape (one text item) and the streamed shape (many).
 const COST_HOOK_CMD = `node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=JSON.parse(s||"{}");const g=(o)=>typeof o==="string"?o:(o&&typeof o==="object"?Object.values(o).map(g).join("\\n"):"");const m=g(i.tool_response).match(/deepseek-cost:(\\{.*?\\})/);if(!m)return;const c=JSON.parse(m[1]);if(c&&typeof c.line==="string"&&c.line.length<400)process.stdout.write(JSON.stringify({systemMessage:c.line}))}catch(e){}})'`;
 
-export function managedHooks() {
+// opts: { gateQuestion, readTarget } — or a bare provider-name string
+// (v3.0 back-compat). readTarget e.g. "deepseek-v4-flash via DeepSeek".
+export function managedHooks(opts = {}) {
+  if (typeof opts === 'string') opts = { gateQuestion: `Delegate to ${safeProviderName(opts)}? (y/n)` };
+  const question = sanitizeGateText(opts.gateQuestion || 'Delegate to DeepSeek? (y/n)');
+  const readTarget = opts.readTarget ? sanitizeGateText(opts.readTarget) : '';
   return [
-    { matcher: 'Read', _managedBy: MARKER, hooks: [{ type: 'command', command: READ_HOOK_CMD }] },
-    { matcher: 'Skill', _managedBy: MARKER, hooks: [{ type: 'command', command: SKILL_HOOK_CMD }] },
+    { matcher: 'Read', _managedBy: MARKER, hooks: [{ type: 'command', command: readHookCmd(question, readTarget) }] },
+    { matcher: 'Skill', _managedBy: MARKER, hooks: [{ type: 'command', command: skillHookCmd(question) }] },
   ];
+}
+
+// These strings are embedded in shell-single-quoted node -e programs inside
+// double-quoted JS strings — strip anything that could escape either layer.
+function sanitizeGateText(text) {
+  return String(text).replace(/[^A-Za-z0-9 ()?./·:_-]/g, '').trim();
 }
 
 export function managedPostHooks() {
   return [
-    { matcher: '^mcp__deepseek__deepseek$', _managedBy: MARKER, hooks: [{ type: 'command', command: COST_HOOK_CMD }] },
+    // Both server keys (delegate = v3, deepseek = v2) × both tool names
+    // (delegate = canonical, deepseek = alias).
+    { matcher: '^mcp__(deepseek|delegate)__(deepseek|delegate)$', _managedBy: MARKER, hooks: [{ type: 'command', command: COST_HOOK_CMD }] },
   ];
-}
-
-// ── Paths ────────────────────────────────────────────────────────────────
-// Resolve Claude Code's config directory, honoring the same overrides Claude
-// Code itself uses, so we never write to the wrong place:
-//   1. CLAUDE_DELEGATOR_HOME — test-only sandbox (treated as a fake $HOME)
-//   2. CLAUDE_CONFIG_DIR     — Claude Code's official config relocation
-//   3. ~/.claude             — the default
-export function claudeDir() {
-  if (process.env.CLAUDE_DELEGATOR_HOME) return join(process.env.CLAUDE_DELEGATOR_HOME, '.claude');
-  if (process.env.CLAUDE_CONFIG_DIR) return process.env.CLAUDE_CONFIG_DIR;
-  return join(homedir(), '.claude');
-}
-
-export function paths() {
-  const dir = claudeDir();
-  return {
-    claudeDir: dir,
-    claudeMd: join(dir, 'CLAUDE.md'),
-    settingsJson: join(dir, 'settings.json'),
-    // file fallback target for MCP config when the `claude` CLI is unavailable
-    legacyMcpJson: join(dir, 'mcp.json'),
-  };
 }
 
 // ── Safe file IO ─────────────────────────────────────────────────────────
@@ -135,14 +176,14 @@ export function hasBlock(text) {
   return text.includes(BLOCK_BEGIN) && text.includes(BLOCK_END);
 }
 
-function renderBlock() {
-  return `${BLOCK_BEGIN}\n${MANAGED_RULES}\n${BLOCK_END}`;
+function renderBlock(rules = MANAGED_RULES) {
+  return `${BLOCK_BEGIN}\n${rules}\n${BLOCK_END}`;
 }
 
 // Append our block, or replace it in place if already present. Never alters
 // anything outside the sentinels. Returns the new full text.
-export function upsertBlock(text) {
-  const block = renderBlock();
+export function upsertBlock(text, rules = MANAGED_RULES) {
+  const block = renderBlock(rules);
   if (hasBlock(text)) {
     const start = text.indexOf(BLOCK_BEGIN);
     const end = text.indexOf(BLOCK_END) + BLOCK_END.length;
@@ -164,20 +205,26 @@ export function removeBlock(text) {
 }
 
 // ── settings.json hooks ──────────────────────────────────────────────────
-function isOurs(entry) {
+// Is this hook entry one of ours? The _managedBy tag is the primary marker,
+// but Claude Code rewrites settings.json during sessions and strips unknown
+// fields — so the signature fallback is load-bearing, and EVERY consumer
+// (addHooks, removeHooks, doctor) must use this, never the tag directly.
+export function isManagedHook(entry) {
   if (entry && entry._managedBy === MARKER) return true;
-  // Defensive fallback: identify by our signature even if the tag was stripped.
+  // The gate text varies ("Delegate to X? (y/n)" or the multi-provider
+  // "Delegate? (y/n)"), so match its invariant shape.
   const cmds = (entry?.hooks || []).map((h) => h?.command || '').join('\n');
-  return (cmds.includes('Delegate to DeepSeek? (y/n)') || cmds.includes('deepseek-cost:')) && cmds.includes('node -e');
+  return ((cmds.includes('Delegate') && cmds.includes('? (y/n)')) || cmds.includes('deepseek-cost:')) && cmds.includes('node -e');
 }
+const isOurs = isManagedHook;
 
 // Ensure settings contains exactly our managed hooks (idempotent), without
 // disturbing any other hooks the user has. Mutates and returns a copy.
-export function addHooks(settingsIn) {
+export function addHooks(settingsIn, hookOpts = {}) {
   const settings = structuredClone(settingsIn || {});
   if (typeof settings.hooks !== 'object' || settings.hooks === null) settings.hooks = {};
   // drop any prior copies of ours, then add fresh — keeps it idempotent
-  for (const [event, ours] of [['PreToolUse', managedHooks()], ['PostToolUse', managedPostHooks()]]) {
+  for (const [event, ours] of [['PreToolUse', managedHooks(hookOpts)], ['PostToolUse', managedPostHooks()]]) {
     if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = [];
     settings.hooks[event] = settings.hooks[event].filter((e) => !isOurs(e));
     settings.hooks[event].push(...ours);
@@ -199,11 +246,29 @@ export function removeHooks(settingsIn) {
   return settings;
 }
 
+// The keyring (keys saved in the MCP entry's env block) lives in the
+// registry so every "is this provider usable?" check shares one answer.
+export { storedMcpEnv } from '../providers/registry.mjs';
+
 // ── MCP server entry ─────────────────────────────────────────────────────
-export function mcpEntry(apiKeyValue) {
-  return {
-    command: 'npx',
-    args: ['-y', PKG_NAME],
-    env: { DEEPSEEK_API_KEY: apiKeyValue },
-  };
+// The server key stays "deepseek" in mcpServers regardless of provider —
+// renaming it would orphan every existing install's config entry.
+//
+// The env block is a KEYRING, not a single slot: switching providers must
+// never lose the previous provider's key (that's what makes cross-provider
+// routing work, and re-running init used to wipe it). `newEnv` holds this
+// run's collected keys (one init can enroll several providers); `existingEnv`
+// is the current entry's env block — every *_API_KEY in it survives, new
+// values win for their own variables, placeholders are dropped.
+export function mcpEntry(newEnv = {}, existingEnv = {}) {
+  const env = {};
+  for (const [k, v] of Object.entries(existingEnv || {})) {
+    if (/_API_KEY$/.test(k) && typeof v === 'string' && v && !v.includes('REPLACE')) env[k] = v;
+  }
+  for (const [k, v] of Object.entries(newEnv || {})) {
+    if (k && typeof v === 'string' && v) env[k] = v;
+  }
+  const entry = { command: 'npx', args: ['-y', PKG_NAME] };
+  if (Object.keys(env).length) entry.env = env;
+  return entry;
 }

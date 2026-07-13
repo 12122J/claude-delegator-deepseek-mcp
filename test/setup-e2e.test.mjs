@@ -60,8 +60,8 @@ test('init wires everything without clobbering user content', () => {
 
   ok(existsSync(mcp), 'mcp.json written (file fallback)');
   const m = readJson(mcp);
-  equal(m.mcpServers.deepseek.command, 'npx');
-  ok(m.mcpServers.deepseek.args.includes('claude-code-deepseek-delegator'));
+  equal(m.mcpServers.delegate.command, 'npx');
+  ok(m.mcpServers.delegate.args.includes('claude-code-deepseek-delegator'));
 
   const backups = readdirSync(join(home, '.claude')).filter((f) => f.includes('.deepseek-bak-'));
   ok(backups.length >= 2, 'backups created for changed files');
@@ -95,7 +95,7 @@ test('uninstall removes only ours and restores user content', () => {
   equal(s.hooks.PostToolUse, undefined, 'cost display hook gone, empty array cleaned up');
 
   const m = readJson(join(home, '.claude', 'mcp.json'));
-  ok(!m.mcpServers || !('deepseek' in m.mcpServers), 'mcp entry removed');
+  ok(!m.mcpServers || (!('deepseek' in m.mcpServers) && !('delegate' in m.mcpServers)), 'mcp entry removed (both keys)');
 });
 
 test('dry-run writes nothing', () => {
@@ -107,6 +107,37 @@ test('dry-run writes nothing', () => {
   ok(!existsSync(join(home, '.claude', 'mcp.json')), 'no mcp.json written');
   const backups = readdirSync(join(home, '.claude')).filter((f) => f.includes('.deepseek-bak-'));
   equal(backups.length, 0, 'no backups in dry run');
+});
+
+test('switching providers keeps the previous provider key (the keyring bug)', () => {
+  const home = setupHome();
+  const mcp = join(home, '.claude', 'mcp.json');
+
+  // 1st init: deepseek, env-ref (DEEPSEEK_API_KEY exported in run()'s env)
+  run(home, ['init', '--yes']);
+  equal(readJson(mcp).mcpServers.delegate.env.DEEPSEEK_API_KEY, '${DEEPSEEK_API_KEY}');
+
+  // 2nd init: switch to moonshot with a pasted key — deepseek's must survive
+  run(home, ['init', '--yes', '--provider', 'moonshot', '--key', 'sk-moon-test']);
+  const env = readJson(mcp).mcpServers.delegate.env;
+  equal(env.MOONSHOT_API_KEY, 'sk-moon-test', 'new provider key saved');
+  equal(env.DEEPSEEK_API_KEY, '${DEEPSEEK_API_KEY}', 'previous key NOT clobbered');
+
+  // 3rd init back to moonshot with NO key flag and no env var: the stored
+  // key must be reused, not lost to a placeholder
+  run(home, ['init', '--yes', '--provider', 'moonshot']);
+  const env2 = readJson(mcp).mcpServers.delegate.env;
+  equal(env2.MOONSHOT_API_KEY, 'sk-moon-test', 'stored key reused on re-init');
+});
+
+test('--provider accepts a comma list; first is primary, all keys enroll', () => {
+  const home = setupHome();
+  run(home, ['init', '--yes', '--provider', 'deepseek,moonshot']);
+  const cfg = readJson(join(home, '.claude', 'delegator.json'));
+  equal(cfg.provider, 'deepseek', 'first listed provider is primary');
+  const env = readJson(join(home, '.claude', 'mcp.json')).mcpServers.delegate.env;
+  equal(env.DEEPSEEK_API_KEY, '${DEEPSEEK_API_KEY}', 'primary key enrolled (env-ref)');
+  ok(!('MOONSHOT_API_KEY' in env), 'no moonshot key available ⇒ nothing stored, no placeholder');
 });
 
 test('malformed settings.json is never overwritten', () => {

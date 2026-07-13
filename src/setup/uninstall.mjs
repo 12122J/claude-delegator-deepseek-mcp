@@ -1,15 +1,23 @@
 // `claude-code-deepseek-delegator uninstall` — remove exactly what init added,
-// and nothing else. Removes the managed CLAUDE.md block, our hooks (PreToolUse
-// gates + PostToolUse cost display), and the MCP server registration. User
-// content and unrelated config are left fully intact. Backs up every file it
-// changes.
+// and nothing else: the managed CLAUDE.md block, our hooks (PreToolUse gates +
+// PostToolUse cost display), the MCP server registration, and the delegation
+// config files (delegator.json, delegator-providers.json). User content and
+// unrelated config are left fully intact. Backs up every file it changes.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import {
   paths, backupFile, atomicWrite, readJsonSafe,
-  removeBlock, removeHooks,
+  removeBlock, removeHooks, PKG_NAME, MCP_KEYS,
 } from './wiring.mjs';
+import { intro, outro, bar } from './tui.mjs';
+import { color, bold, dim } from '../colors.mjs';
+
+const OK = color('green', '✓');
+const NO = color('red', '✗');
+function row(mark, label, detail) {
+  bar(`${mark} ${bold(label.padEnd(10))} ${detail}`);
+}
 
 function has(cmd, args = ['--version']) {
   try { return spawnSync(cmd, args, { stdio: 'ignore' }).status === 0; } catch { return false; }
@@ -23,10 +31,11 @@ function unwireMcpViaFile(p, dryRun) {
   const res = readJsonSafe(p.legacyMcpJson);
   if (!res.ok) return { changed: false, detail: `${p.legacyMcpJson} not valid JSON — left untouched` };
   const data = res.data || {};
-  if (!data.mcpServers || !('deepseek' in data.mcpServers)) {
-    return { changed: false, detail: 'no deepseek entry in file' };
+  const present = MCP_KEYS.filter((k) => data.mcpServers && k in data.mcpServers);
+  if (present.length === 0) {
+    return { changed: false, detail: 'no delegator entry in file' };
   }
-  delete data.mcpServers.deepseek;
+  for (const k of present) delete data.mcpServers[k];
   if (Object.keys(data.mcpServers).length === 0) delete data.mcpServers;
   if (!dryRun) {
     const bak = backupFile(p.legacyMcpJson);
@@ -41,23 +50,27 @@ export async function runUninstall(argv = []) {
   const p = paths();
   const backups = [];
 
-  console.log(`\nclaude-code-deepseek-delegator · uninstall${dryRun ? '  (dry run — no files will be written)' : ''}\n`);
+  console.log('');
+  intro(`${PKG_NAME} ${dim('· uninstall')}${dryRun ? color('yellow', '  dry run — nothing will be written') : ''}`);
 
   // 1) MCP server
   let mcpDetail;
   if (cliAvailable()) {
     if (dryRun) {
-      mcpDetail = 'would run `claude mcp remove deepseek --scope user`';
+      mcpDetail = `would run \`claude mcp remove ${MCP_KEYS.join(' + ')} --scope user\``;
     } else {
-      const r = spawnSync('claude', ['mcp', 'remove', 'deepseek', '--scope', 'user'], { encoding: 'utf8' });
-      mcpDetail = r.status === 0 ? 'removed via `claude mcp remove`' : 'not registered (nothing to remove)';
+      let removed = 0;
+      for (const k of MCP_KEYS) {
+        if (spawnSync('claude', ['mcp', 'remove', k, '--scope', 'user'], { encoding: 'utf8' }).status === 0) removed++;
+      }
+      mcpDetail = removed ? 'removed via `claude mcp remove`' : 'not registered (nothing to remove)';
     }
   } else {
     const r = unwireMcpViaFile(p, dryRun);
     mcpDetail = r.detail;
     if (r.backup) backups.push(r.backup);
   }
-  console.log(`  ✓ MCP server   ${mcpDetail}`);
+  row(OK, 'MCP server', mcpDetail);
 
   // 2) CLAUDE.md block
   const curMd = existsSync(p.claudeMd) ? readFileSync(p.claudeMd, 'utf8') : '';
@@ -68,12 +81,12 @@ export async function runUninstall(argv = []) {
     if (bak) backups.push(bak);
     atomicWrite(p.claudeMd, nextMd);
   }
-  console.log(`  ✓ CLAUDE.md    ${mdChanged ? (dryRun ? 'would remove' : 'removed') : 'no managed block found'} the delegation rules`);
+  row(OK, 'CLAUDE.md', `${mdChanged ? (dryRun ? 'would remove' : 'removed') : 'no managed block found'} the delegation rules`);
 
   // 3) settings.json hooks
   const res = readJsonSafe(p.settingsJson);
   if (!res.ok) {
-    console.log(`  ✗ hooks        ${p.settingsJson} is not valid JSON — left untouched`);
+    row(NO, 'hooks', `${p.settingsJson} is not valid JSON — left untouched`);
   } else {
     const next = removeHooks(res.data);
     const changed = JSON.stringify(next) !== JSON.stringify(res.data);
@@ -82,16 +95,35 @@ export async function runUninstall(argv = []) {
       if (bak) backups.push(bak);
       atomicWrite(p.settingsJson, JSON.stringify(next, null, 2) + '\n');
     }
-    console.log(`  ✓ hooks        ${changed ? (dryRun ? 'would remove' : 'removed') : 'no managed hooks found'}`);
+    row(OK, 'hooks', `${changed ? (dryRun ? 'would remove' : 'removed') : 'no managed hooks found'}`);
   }
 
-  console.log('');
-  if (backups.length) {
-    console.log('  Backups written:');
-    for (const b of backups) console.log(`    - ${b}`);
-    console.log('');
+  // 4) delegation config files (v3) — ours entirely, so removed entirely
+  for (const [label, file, absent] of [
+    ['config', p.delegatorJson, 'not present'],
+    ['custom', p.providersJson, 'none defined (custom endpoints file)'],
+  ]) {
+    if (!existsSync(file)) {
+      row(dim('•'), label, dim(absent));
+      continue;
+    }
+    if (!dryRun) {
+      const bak = backupFile(file);
+      if (bak) backups.push(bak);
+      rmSync(file);
+    }
+    row(OK, label, `${dryRun ? 'would remove' : 'removed'} ${file}`);
   }
-  console.log(`  ${dryRun ? 'Dry run complete.' : 'Done — the delegator is fully unwired from Claude Code.'}`);
-  console.log('  Older .deepseek-bak-* backups are left in place; delete them whenever you like.\n');
+
+  bar();
+  if (backups.length) {
+    bar(dim('backups written:'));
+    for (const b of backups) bar(dim(`  ${b}`));
+    bar();
+  }
+  outro([
+    dryRun ? bold('Dry run complete.') : `${color('green', 'Done.')} The delegator is fully unwired from Claude Code.`,
+    dim('Older .deepseek-bak-* backups are left in place; delete them whenever you like.'),
+  ]);
   return 0;
 }
