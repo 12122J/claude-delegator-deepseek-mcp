@@ -109,6 +109,21 @@ test('dry-run writes nothing', () => {
   equal(backups.length, 0, 'no backups in dry run');
 });
 
+test('switching providers keeps the previous provider key (the keyring bug)', () => {
+  const home = setupHome();
+  const mcp = join(home, '.claude', 'mcp.json');
+
+  // 1st init: deepseek, env-ref (DEEPSEEK_API_KEY exported in run()'s env)
+  run(home, ['init', '--yes']);
+  equal(readJson(mcp).mcpServers.deepseek.env.DEEPSEEK_API_KEY, '${DEEPSEEK_API_KEY}');
+
+  // 2nd init: switch to moonshot with a pasted key — deepseek's must survive
+  run(home, ['init', '--yes', '--provider', 'moonshot', '--key', 'sk-moon-test']);
+  const env = readJson(mcp).mcpServers.deepseek.env;
+  equal(env.MOONSHOT_API_KEY, 'sk-moon-test', 'new provider key saved');
+  equal(env.DEEPSEEK_API_KEY, '${DEEPSEEK_API_KEY}', 'previous key NOT clobbered');
+});
+
 test('malformed settings.json is never overwritten', () => {
   const home = setupHome();
   const settings = join(home, '.claude', 'settings.json');

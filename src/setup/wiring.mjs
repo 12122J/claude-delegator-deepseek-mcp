@@ -207,10 +207,19 @@ export function removeHooks(settingsIn) {
 // ── MCP server entry ─────────────────────────────────────────────────────
 // The server key stays "deepseek" in mcpServers regardless of provider —
 // renaming it would orphan every existing install's config entry.
-export function mcpEntry(apiKeyValue, envVar = 'DEEPSEEK_API_KEY') {
-  return {
-    command: 'npx',
-    args: ['-y', PKG_NAME],
-    env: { [envVar]: apiKeyValue },
-  };
+//
+// The env block is a KEYRING, not a single slot: switching providers must
+// never lose the previous provider's key (that's what makes cross-provider
+// routing work, and re-running init used to wipe it). `existingEnv` is the
+// env block of the current entry; every *_API_KEY in it survives, the new
+// value wins for its own variable, placeholders are dropped.
+export function mcpEntry(apiKeyValue, envVar = 'DEEPSEEK_API_KEY', existingEnv = {}) {
+  const env = {};
+  for (const [k, v] of Object.entries(existingEnv || {})) {
+    if (/_API_KEY$/.test(k) && typeof v === 'string' && v && !v.includes('REPLACE')) env[k] = v;
+  }
+  if (envVar && apiKeyValue) env[envVar] = apiKeyValue;
+  const entry = { command: 'npx', args: ['-y', PKG_NAME] };
+  if (Object.keys(env).length) entry.env = env;
+  return entry;
 }

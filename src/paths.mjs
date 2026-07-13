@@ -18,12 +18,15 @@ export function claudeDir() {
 
 export function paths() {
   const dir = claudeDir();
+  const homeBase = process.env.CLAUDE_DELEGATOR_HOME || homedir();
   return {
     claudeDir: dir,
     claudeMd: join(dir, 'CLAUDE.md'),
     settingsJson: join(dir, 'settings.json'),
     // file fallback target for MCP config when the `claude` CLI is unavailable
     legacyMcpJson: join(dir, 'mcp.json'),
+    // where `claude mcp add --scope user` actually stores server entries
+    claudeJson: join(homeBase, '.claude.json'),
     // v3: delegation config (active provider, task routing, savings baseline)
     delegatorJson: process.env.DELEGATOR_CONFIG || join(dir, 'delegator.json'),
     // v3: user-defined providers (any OpenAI-compatible endpoint)
