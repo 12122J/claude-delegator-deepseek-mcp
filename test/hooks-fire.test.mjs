@@ -50,6 +50,14 @@ test('Read hook is silent when there is no file_path', () => {
   equal(out, '');
 });
 
+test('Read hook is silent on binary files — "lines" mean nothing in a PNG', () => {
+  const f = join(mkdtempSync(join(tmpdir(), 'hk-')), 'img.png');
+  // many newline bytes (>300 "lines") but with NUL bytes like any real binary
+  writeFileSync(f, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]), Buffer.alloc(400, 0x0a), Buffer.from([0x00])]));
+  const { out } = fire(readHook, { tool_input: { file_path: f } });
+  equal(out, '', 'no gate for binary content');
+});
+
 test('Skill hook fires the gate and names the skill', () => {
   const { out } = fire(skillHook, { tool_input: { skill: 'seo-audit' } });
   const parsed = JSON.parse(out);
