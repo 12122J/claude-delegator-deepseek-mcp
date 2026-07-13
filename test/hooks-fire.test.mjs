@@ -81,7 +81,7 @@ test('cost hook surfaces the real pricing.mjs footer as a systemMessage', () => 
     CTX
   );
   const { out } = fire(costHook, {
-    tool_name: 'mcp__deepseek__deepseek',
+    tool_name: 'mcp__delegate__delegate',
     tool_response: { content: [{ type: 'text', text: 'the actual answer\n' + footer }] },
   });
   ok(out.length > 0, 'hook produced output');

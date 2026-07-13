@@ -66,7 +66,7 @@ npx claude-code-deepseek-delegator doctor
 1. **`~/.claude/delegator.json`** — your provider, model routing, and savings baseline. Edit it anytime; changes apply on the next call, no restart.
 2. **A clearly-labeled block in `~/.claude/CLAUDE.md`** — the delegation rules, fenced with `<!-- >>> ... >>> -->` markers. **Never touches anything else in your file.**
 3. **Three hooks in `~/.claude/settings.json`** — two `PreToolUse` nudges (before large reads and skill loads) and one `PostToolUse` cost receipt. They **only add context or display info — they never block, delete, or modify your tool calls.**
-4. **An MCP server** named `deepseek` (`npx -y claude-code-deepseek-delegator`).
+4. **An MCP server** named `delegate` (`npx -y claude-code-deepseek-delegator`) — so Claude Code shows "Calling delegate…" on every call. v2's `deepseek` server key keeps working on untouched installs and is migrated automatically when you re-run init.
 
 Before any of that, it writes a timestamped backup of every file it changes. To undo everything — including the config files:
 
@@ -270,7 +270,7 @@ npx claude-code-deepseek-delegator <command>
 
 **Can I use two providers at once?** Yes — select both in the wizard's provider step (space toggles) and give each its key in the same run; the Custom and Shortlist menus then mix their models. Under the hood routing values and shortlist entries are `provider:model` specs, keys live as a keyring in the MCP env block (surviving re-runs and provider switches), and `doctor` verifies every referenced provider's key.
 
-**Why is the package still called *deepseek*-delegator if it's model-agnostic?** 12k installs a month depend on the name, the MCP server key, and the tool alias. The engine is agnostic; the packaging keeps its name so nobody's setup breaks.
+**Why is the package still called *deepseek*-delegator if it's model-agnostic?** 12k installs a month depend on the npm name and the v2 tool alias. The engine is agnostic; the packaging keeps its name so nobody's setup breaks. (The MCP server itself registers as `delegate` since 3.0.)
 
 ## License
 

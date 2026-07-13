@@ -68,7 +68,9 @@ export function storedMcpEnv() {
   for (const file of [p.claudeJson, p.legacyMcpJson]) {
     try {
       if (existsSync(file)) {
-        Object.assign(merged, JSON.parse(readFileSync(file, 'utf8'))?.mcpServers?.deepseek?.env || {});
+        const servers = JSON.parse(readFileSync(file, 'utf8'))?.mcpServers || {};
+        // v2 entry first so the current "delegate" entry wins on conflicts
+        Object.assign(merged, servers.deepseek?.env || {}, servers.delegate?.env || {});
       }
     } catch {
       // a malformed config never takes key resolution down

@@ -16,6 +16,11 @@ export { claudeDir, paths } from '../paths.mjs';
 
 export const PKG_NAME = 'claude-code-deepseek-delegator';
 export const MARKER = 'claude-code-deepseek-delegator';
+// MCP server keys: new installs register as "delegate" (that's the name
+// Claude Code shows on every call — "Calling delegate…"); "deepseek" is the
+// v2 key, still recognized everywhere so untouched installs keep working.
+// Order matters: first is what we write, the rest are legacy reads.
+export const MCP_KEYS = ['delegate', 'deepseek'];
 export const REPO_URL = 'https://github.com/12122J/claude-delegator-deepseek-mcp';
 export const AUTHOR = 'Javi (@12122J)';
 
@@ -130,8 +135,9 @@ function sanitizeGateText(text) {
 
 export function managedPostHooks() {
   return [
-    // Both tool names: `delegate` (v3 canonical) and `deepseek` (v2 alias).
-    { matcher: '^mcp__deepseek__(deepseek|delegate)$', _managedBy: MARKER, hooks: [{ type: 'command', command: COST_HOOK_CMD }] },
+    // Both server keys (delegate = v3, deepseek = v2) × both tool names
+    // (delegate = canonical, deepseek = alias).
+    { matcher: '^mcp__(deepseek|delegate)__(deepseek|delegate)$', _managedBy: MARKER, hooks: [{ type: 'command', command: COST_HOOK_CMD }] },
   ];
 }
 

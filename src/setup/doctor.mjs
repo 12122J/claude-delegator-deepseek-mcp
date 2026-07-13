@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { paths, readJsonSafe, hasBlock, storedMcpEnv, isManagedHook, PKG_NAME, REPO_URL } from './wiring.mjs';
+import { paths, readJsonSafe, hasBlock, storedMcpEnv, isManagedHook, PKG_NAME, REPO_URL, MCP_KEYS } from './wiring.mjs';
 import { getProvider, resolveApiKey, keyEnvVar, resolveModel } from '../providers/registry.mjs';
 import { loadConfig, TASKS } from '../config.mjs';
 import { intro, outro, bar } from './tui.mjs';
@@ -73,16 +73,15 @@ export async function runDoctor() {
     }
   }
 
-  // 3) MCP server registered (CLI-authoritative, with file fallback check)
-  let mcpOk = false;
-  if (has('claude')) {
-    mcpOk = spawnSync('claude', ['mcp', 'get', 'deepseek'], { stdio: 'ignore' }).status === 0;
-  }
-  if (!mcpOk) {
+  // 3) MCP server registered (CLI-authoritative, with file fallback check;
+  //    either key counts — "delegate" is current, "deepseek" is v2)
+  let mcpKey = null;
+  for (const k of MCP_KEYS) {
+    if (has('claude') && spawnSync('claude', ['mcp', 'get', k], { stdio: 'ignore' }).status === 0) { mcpKey = k; break; }
     const res = readJsonSafe(p.legacyMcpJson);
-    mcpOk = !!(res.ok && res.data?.mcpServers?.deepseek);
+    if (res.ok && res.data?.mcpServers?.[k]) { mcpKey = k; break; }
   }
-  add(mcpOk, 'MCP server "deepseek" registered with Claude Code', `Run: npx ${PKG_NAME} init`);
+  add(!!mcpKey, `MCP server registered with Claude Code${mcpKey ? ` ("${mcpKey}")` : ''}`, `Run: npx ${PKG_NAME} init`);
 
   // 4) CLAUDE.md rules present
   const md = existsSync(p.claudeMd) ? readFileSync(p.claudeMd, 'utf8') : '';

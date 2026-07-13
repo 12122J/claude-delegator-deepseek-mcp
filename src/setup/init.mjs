@@ -18,7 +18,7 @@ import { createRequire } from 'node:module';
 import {
   paths, backupFile, atomicWrite, readJsonSafe,
   upsertBlock, addHooks, mcpEntry, managedRules, storedMcpEnv,
-  PKG_NAME, REPO_URL, AUTHOR,
+  PKG_NAME, REPO_URL, AUTHOR, MCP_KEYS,
 } from './wiring.mjs';
 import {
   listProviders, getProvider, loadProviders, resolveApiKey, keyEnvVar, findModel, resolveModel,
@@ -92,9 +92,10 @@ export function buildModelChoices(activeId, enrolledIds = new Set()) {
 }
 
 function wireMcpViaCli(entry) {
-  // remove-then-add keeps it idempotent and ensures the latest config sticks
-  spawnSync('claude', ['mcp', 'remove', 'deepseek', '--scope', 'user'], { stdio: 'ignore' });
-  const r = spawnSync('claude', ['mcp', 'add-json', 'deepseek', JSON.stringify(entry), '--scope', 'user'], { encoding: 'utf8' });
+  // remove-then-add keeps it idempotent; removing the v2 "deepseek" key
+  // migrates old installs to the "delegate" key (what Claude Code displays)
+  for (const k of MCP_KEYS) spawnSync('claude', ['mcp', 'remove', k, '--scope', 'user'], { stdio: 'ignore' });
+  const r = spawnSync('claude', ['mcp', 'add-json', MCP_KEYS[0], JSON.stringify(entry), '--scope', 'user'], { encoding: 'utf8' });
   return { ok: r.status === 0, detail: ((r.stdout || '') + (r.stderr || '')).trim() };
 }
 
@@ -103,7 +104,8 @@ function wireMcpViaFile(p, entry, dryRun) {
   if (!res.ok) return { ok: false, detail: `${p.legacyMcpJson} is not valid JSON — left untouched` };
   const data = res.data || {};
   if (typeof data.mcpServers !== 'object' || data.mcpServers === null) data.mcpServers = {};
-  data.mcpServers.deepseek = entry;
+  delete data.mcpServers.deepseek; // migrate the v2 key
+  data.mcpServers[MCP_KEYS[0]] = entry;
   if (!dryRun) {
     const bak = backupFile(p.legacyMcpJson);
     atomicWrite(p.legacyMcpJson, JSON.stringify(data, null, 2) + '\n');
@@ -483,7 +485,7 @@ async function wizard(argv) {
     noHooks
       ? `${bold('settings.json')}    ${dim('skipped (--no-hooks)')}`
       : `${bold('settings.json')}    2 nudge hooks + the cost receipt ${dim('— never blocks')}`,
-    `${bold('MCP server')}       "deepseek" ${dim('(npx -y ' + PKG_NAME + ')')}`,
+    `${bold('MCP server')}       "delegate" ${dim('(npx -y ' + PKG_NAME + ')')}`,
   ], { title: bold('4 changes to your Claude Code setup') });
   bar(dim(`reversible anytime: npx ${PKG_NAME} uninstall · timestamped backups are written first`));
   bar();
@@ -515,10 +517,11 @@ async function wizard(argv) {
   // block is a keyring; switching providers must not lose the old key).
   // Custom providers keep their literal key in the provider entry itself, so
   // they contribute nothing to newKeys.
-  const existingEnv = {
-    ...(readJsonSafe(p.claudeJson).data?.mcpServers?.deepseek?.env || {}),
-    ...(readJsonSafe(p.legacyMcpJson).data?.mcpServers?.deepseek?.env || {}),
-  };
+  const existingEnv = {};
+  for (const file of [p.claudeJson, p.legacyMcpJson]) {
+    const servers = readJsonSafe(file).data?.mcpServers || {};
+    Object.assign(existingEnv, servers.deepseek?.env || {}, servers.delegate?.env || {});
+  }
   const entry = mcpEntry(newKeys, existingEnv);
   const keptKeys = Object.keys(entry.env || {}).filter((k) => !(k in newKeys));
   if (keptKeys.length) notes.push(`Kept existing key(s) in the MCP env block: ${keptKeys.join(', ')} — cross-provider routing needs them.`);

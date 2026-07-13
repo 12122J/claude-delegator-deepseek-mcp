@@ -8,7 +8,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import {
   paths, backupFile, atomicWrite, readJsonSafe,
-  removeBlock, removeHooks, PKG_NAME,
+  removeBlock, removeHooks, PKG_NAME, MCP_KEYS,
 } from './wiring.mjs';
 import { intro, outro, bar } from './tui.mjs';
 import { color, bold, dim } from '../colors.mjs';
@@ -31,10 +31,11 @@ function unwireMcpViaFile(p, dryRun) {
   const res = readJsonSafe(p.legacyMcpJson);
   if (!res.ok) return { changed: false, detail: `${p.legacyMcpJson} not valid JSON — left untouched` };
   const data = res.data || {};
-  if (!data.mcpServers || !('deepseek' in data.mcpServers)) {
-    return { changed: false, detail: 'no deepseek entry in file' };
+  const present = MCP_KEYS.filter((k) => data.mcpServers && k in data.mcpServers);
+  if (present.length === 0) {
+    return { changed: false, detail: 'no delegator entry in file' };
   }
-  delete data.mcpServers.deepseek;
+  for (const k of present) delete data.mcpServers[k];
   if (Object.keys(data.mcpServers).length === 0) delete data.mcpServers;
   if (!dryRun) {
     const bak = backupFile(p.legacyMcpJson);
@@ -56,10 +57,13 @@ export async function runUninstall(argv = []) {
   let mcpDetail;
   if (cliAvailable()) {
     if (dryRun) {
-      mcpDetail = 'would run `claude mcp remove deepseek --scope user`';
+      mcpDetail = `would run \`claude mcp remove ${MCP_KEYS.join(' + ')} --scope user\``;
     } else {
-      const r = spawnSync('claude', ['mcp', 'remove', 'deepseek', '--scope', 'user'], { encoding: 'utf8' });
-      mcpDetail = r.status === 0 ? 'removed via `claude mcp remove`' : 'not registered (nothing to remove)';
+      let removed = 0;
+      for (const k of MCP_KEYS) {
+        if (spawnSync('claude', ['mcp', 'remove', k, '--scope', 'user'], { encoding: 'utf8' }).status === 0) removed++;
+      }
+      mcpDetail = removed ? 'removed via `claude mcp remove`' : 'not registered (nothing to remove)';
     }
   } else {
     const r = unwireMcpViaFile(p, dryRun);

@@ -130,7 +130,7 @@ test('addHooks adds our three hooks and preserves the user’s existing hooks', 
   ok(out.hooks.PreToolUse.some((e) => e.matcher === 'Read' && e._managedBy === MARKER));
   ok(out.hooks.PreToolUse.some((e) => e.matcher === 'Skill' && e._managedBy === MARKER));
   equal(out.hooks.PostToolUse.length, 1, 'our cost hook');
-  ok(out.hooks.PostToolUse.some((e) => e.matcher === '^mcp__deepseek__(deepseek|delegate)$' && e._managedBy === MARKER), 'cost hook matches both tool names');
+  ok(out.hooks.PostToolUse.some((e) => e.matcher === '^mcp__(deepseek|delegate)__(deepseek|delegate)$' && e._managedBy === MARKER), 'cost hook matches both tool names');
   deepEqual(out.permissions, { allow: ['Bash'] }, 'unrelated settings untouched');
 });
 
