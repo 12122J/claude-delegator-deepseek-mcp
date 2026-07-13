@@ -1,6 +1,9 @@
 # Claude Code DeepSeek Delegator
 
-**Cut your Claude Code bill by offloading heavy, token-hungry work to a cheaper model — DeepSeek, Kimi, GLM, Qwen, Grok, or any OpenAI-compatible endpoint — without leaving your session.**
+> ### 🚀 3.0 is out — now model-agnostic
+> One tool, **any model**: DeepSeek, Kimi, GLM, Qwen, Grok, Groq, OpenRouter, even your local ollama — and you can **mix them per task**. Plus a rebuilt interactive installer, a model picker inside Claude Code, and a receipt for every cent. v2 installs keep working untouched. **[See what's new ↓](#whats-new-in-30)**
+
+**Cut your Claude Code bill by 90–97% on heavy work — big file audits, long generations, deep reasoning — by delegating it to a cheaper model without leaving your session.**
 
 Claude orchestrates; the delegate does the grunt work (big file audits, long generations, deep reasoning) at a fraction of the price. One tool call, no subagent spawn, no daemon, zero dependencies.
 
@@ -19,6 +22,17 @@ Claude orchestrates; the delegate does the grunt work (big file audits, long gen
 <img src="assets/hero.svg" alt="A Claude Code session in a light macOS terminal: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, files are handed off via files[], a receipt line shows saved $0.194 (94% vs Opus) · spent $0.012, and Claude synthesizes the three findings" width="860">
 
 Every call ends with a receipt — shown to you automatically, straight from the API's own token counts. You always know what you spent and what you saved.
+
+---
+
+## What's new in 3.0
+
+- **Any model, not just DeepSeek.** 8 providers vendored (DeepSeek, Moonshot/Kimi, Z.AI + Zhipu/GLM, Alibaba/Qwen, Groq, xAI/Grok, OpenRouter) plus any OpenAI-compatible endpoint you add — including local ollama/vllm for **$0 delegation**.
+- **Mix and match providers.** Route digestion to GLM-flash, code generation to DeepSeek-pro, keep a Kimi in your shortlist — the wizard offers every provider it finds a key for, and your keys are kept as a keyring across re-runs.
+- **A setup wizard that's actually nice.** Arrow-key rail UI, live API-key validation against the real endpoint, full disclosure before anything is written, one question for model strategy.
+- **Pick the model your way.** Smart split (cheap model digests, big model creates), a shortlist picker rendered by Claude Code's own UI, always-best, always-cheapest, or fully custom per kind of work.
+- **Honest receipts.** Cost per call from the provider's own token counts, cached tokens billed at cached rates, savings baseline of your choice (Opus, Sonnet, or off).
+- **Nothing breaks.** The `deepseek` tool name, env var, and hooks from v2 all keep working. No config = exact v2 behavior.
 
 ---
 
@@ -71,7 +85,7 @@ So the wizard asks one question — **"Which model runs your delegations?"** —
 - **Smart split (recommended)** — the cheap model digests big files, the big model writes code and reasons. You never think about it again; the receipt shows which one ran.
 - **Ask me each time** — you keep a shortlist, and when you approve a delegation Claude shows it through Claude Code's **native picker UI** (the same one `/model` uses) with prices. You tap the model, it delegates there.
 - **Always the best / Always the cheapest** — one model for everything, zero decisions.
-- **Custom** — pick a model per kind of work (`read` / `write` / `reason`), including cross-provider: send reads to Kimi while writes stay on DeepSeek.
+- **Custom** — pick a model per kind of work (`read` / `write` / `reason`), **mixing providers freely**: the menus list models from every provider whose key is detected, so "reads on GLM-flash, writes on DeepSeek-pro, reasoning on Kimi" is three arrow-key picks.
 
 ### What each choice feels like in a session
 
@@ -252,6 +266,8 @@ npx claude-code-deepseek-delegator <command>
 **How do I remove it?** `npx claude-code-deepseek-delegator uninstall`. Clean and complete — MCP entry, rules, hooks, and config files.
 
 **Is my key safe?** Use the env-var reference and it's never written to disk. Or paste the literal key if you prefer.
+
+**Can I use two providers at once?** Yes. Routing values and shortlist entries accept `provider:model`, the wizard's Custom and Shortlist menus list every provider with a detected key, and re-running `init` for a new provider keeps your existing keys (they live as a keyring in the MCP env block). `doctor` verifies every referenced provider's key.
 
 **Why is the package still called *deepseek*-delegator if it's model-agnostic?** 12k installs a month depend on the name, the MCP server key, and the tool alias. The engine is agnostic; the packaging keeps its name so nobody's setup breaks.
 
