@@ -33,8 +33,16 @@ export function safeProviderName(name) {
   return cleaned || 'DeepSeek';
 }
 
-export function managedRules(providerName = 'DeepSeek') {
+// opts.shortlist: [{ spec, hint }] — when present (ask mode), the rules have
+// Claude surface the choice through AskUserQuestion, which renders Claude
+// Code's native picker (the same UI as /model), instead of routing silently.
+export function managedRules(providerName = 'DeepSeek', opts = {}) {
   const name = safeProviderName(providerName);
+  const yesBullet = Array.isArray(opts.shortlist) && opts.shortlist.length > 0
+    ? `- If the user says **y**: first ask which model with the AskUserQuestion tool (header "Delegate", one option per model below, its price as the description), then call the \`delegate\` tool with \`model\` set to the choice:
+${opts.shortlist.map((s) => `  - \`${s.spec}\`${s.hint ? ` — ${s.hint}` : ''}`).join('\n')}
+  Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.`
+    : `- If the user says **y**: call the \`delegate\` tool. Set \`task\` to "read" (summarize/analyze large inputs), "write" (generate code/docs), or "reason" (math, logic, architecture) so routing picks the right model. Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.`;
   return `## Delegate heavy work to ${name}
 
 _Added by \`${PKG_NAME} init\`. Safe to delete this whole block, or run \`npx ${PKG_NAME} uninstall\`._
@@ -53,7 +61,7 @@ Print a one-line scope estimate first, then the question. Example:
 > Delegate to ${name}? (y/n)
 \`\`\`
 
-- If the user says **y**: call the \`delegate\` tool. Set \`task\` to "read" (summarize/analyze large inputs), "write" (generate code/docs), or "reason" (math, logic, architecture) so routing picks the right model. Pass file paths in \`files[]\` so the bytes go straight to the delegate and never fill Claude's context. Then synthesize the result for the user; do not paste it back verbatim.
+${yesBullet}
 - If the user says **n**: do it yourself.
 - Every \`delegate\` result ends with a cost footer. When you reply, surface its savings line to the user (cost, savings, tokens) — never silently drop it.`;
 }

@@ -1,31 +1,44 @@
-// `claude-code-deepseek-delegator init` — wire the tool fully into Claude Code:
-//   1. register the MCP server (so the deepseek tool exists)
-//   2. install the auto-delegation rules into CLAUDE.md (so Claude offers to delegate)
-//   3. install the PreToolUse hooks into settings.json (so the gate can't be skipped)
+// `claude-code-deepseek-delegator init` — the setup wizard. Wires the
+// delegator fully into Claude Code:
+//   1. pick a provider (any of the vendored ones, or a custom OpenAI-compatible
+//      endpoint), paste + live-validate the API key
+//   2. pick task routing (which model handles read/write/reason) and the
+//      savings baseline, written to ~/.claude/delegator.json
+//   3. register the MCP server, install the CLAUDE.md rules and the
+//      settings.json hooks — all named after the chosen provider
 //
-// Safe by construction: backs up every file it changes, writes atomically, never
-// overwrites user content, and is fully reversible with `uninstall`.
+// Safe by construction: backs up every file it changes, writes atomically,
+// never overwrites user content, and is fully reversible with `uninstall`.
+// Non-interactive (--yes, CI, no TTY) never prompts and defaults to the exact
+// v2 behavior: DeepSeek, v4-pro for everything, Opus baseline.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { createInterface } from 'node:readline';
+import { createRequire } from 'node:module';
 import {
   paths, backupFile, atomicWrite, readJsonSafe,
-  upsertBlock, addHooks, mcpEntry,
-  MANAGED_RULES, BLOCK_BEGIN, BLOCK_END,
+  upsertBlock, addHooks, mcpEntry, managedRules,
+  PKG_NAME,
 } from './wiring.mjs';
+import {
+  listProviders, getProvider, loadProviders, resolveApiKey, keyEnvVar, findModel,
+} from '../providers/registry.mjs';
+import { saveConfig, TASKS } from '../config.mjs';
+import { callModel } from '../client.mjs';
+import {
+  select, multiselect, input, spinner, isInteractive, AbortError,
+  intro, outro, bar, panel, stepDone, stepFail,
+} from './tui.mjs';
 import { color, bold, dim } from '../colors.mjs';
 
-const PLACEHOLDER_KEY = 'sk-REPLACE_WITH_YOUR_DEEPSEEK_KEY';
+const VERSION = createRequire(import.meta.url)('../../package.json').version;
+const PLACEHOLDER_KEY = 'sk-REPLACE_WITH_YOUR_API_KEY';
 
-// Console styling helpers — keep init output clean and consistent.
-const RULE = dim('─'.repeat(64));
 const OK = color('green', '✓');
 const NO = color('red', '✗');
-const SKIP = dim('•');
-// One aligned status line: mark, bold fixed-width label, then detail.
-function row(mark, label, detail) {
-  return `  ${mark} ${bold(label.padEnd(10))} ${detail}`;
+// One aligned status line on the rail: mark, bold fixed-width label, detail.
+function applied(mark, label, detail) {
+  bar(`${mark} ${bold(label.padEnd(10))} ${detail}`);
 }
 
 function has(cmd, args = ['--version']) {
@@ -37,48 +50,13 @@ function cliAvailable() {
   return process.env.CLAUDE_DELEGATOR_FORCE_FILE !== '1' && has('claude');
 }
 
-function ask(question) {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(question, (a) => { rl.close(); resolve((a || '').trim()); });
-  });
+function flagValue(argv, flag) {
+  const i = argv.indexOf(flag);
+  return i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
 }
 
-// Like ask(), but does NOT echo what's typed — for pasting a secret so the
-// key never lands in the terminal scrollback.
-function askSecret(question) {
-  return new Promise((resolve) => {
-    process.stdout.write(question);
-    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    rl._writeToOutput = () => {}; // swallow the echoed keystrokes
-    rl.question('', (a) => {
-      rl.close();
-      process.stdout.write('\n');
-      resolve((a || '').trim());
-    });
-  });
-}
-
-async function resolveApiKey({ assumeYes }) {
-  // Best path: the key is already exported — reference it so no secret is
-  // written to disk and it's available to every tool, not just this one.
-  if (process.env.DEEPSEEK_API_KEY) {
-    return { value: '${DEEPSEEK_API_KEY}', mode: 'env-ref' };
-  }
-  // Otherwise, let the user paste it right here. Input is hidden.
-  if (!assumeYes && process.stdin.isTTY) {
-    console.log('');
-    console.log(dim('  No DEEPSEEK_API_KEY in your environment. Get a key at'));
-    console.log(dim('  https://platform.deepseek.com/api_keys'));
-    const pasted = await askSecret('  Paste your DeepSeek API key (hidden), or press Enter to add it later: ');
-    if (pasted) {
-      if (!pasted.startsWith('sk-')) {
-        console.log(`  ${color('yellow', '!')} ${dim('that doesn\'t look like a DeepSeek key (they start with "sk-") — saving it anyway')}`);
-      }
-      return { value: pasted, mode: 'literal' };
-    }
-  }
-  return { value: PLACEHOLDER_KEY, mode: 'placeholder' };
+function priceHint(m) {
+  return `$${m.cost_per_1m_in ?? 0}/$${m.cost_per_1m_out ?? 0} per 1M`;
 }
 
 function wireMcpViaCli(entry) {
@@ -102,66 +80,318 @@ function wireMcpViaFile(p, entry, dryRun) {
   return { ok: true, detail: `would merge into ${p.legacyMcpJson}` };
 }
 
+// ── wizard steps ───────────────────────────────────────────────────────────
+
+async function chooseProvider({ interactive, flagProvider, p, dryRun, notes }) {
+  if (flagProvider) {
+    const provider = getProvider(flagProvider);
+    if (!provider) {
+      stepFail('Provider', `unknown "${flagProvider}" — available: ${listProviders().map((x) => x.id).join(', ')}`);
+      return null;
+    }
+    if (interactive) stepDone('Provider', provider.name);
+    return provider;
+  }
+  if (!interactive) return getProvider('deepseek');
+
+  // Familiar names first, not alphabetical file order.
+  const ORDER = ['deepseek', 'moonshot', 'zai', 'zhipu', 'alibaba-singapore', 'groq', 'xai', 'openrouter'];
+  const providers = listProviders().sort((a, b) => {
+    const ia = ORDER.indexOf(a.id); const ib = ORDER.indexOf(b.id);
+    return (ia === -1 ? ORDER.length : ia) - (ib === -1 ? ORDER.length : ib);
+  });
+  const items = providers.map((prov) => {
+    const cheapest = Math.min(...prov.models.map((m) => (typeof m.cost_per_1m_in === 'number' ? m.cost_per_1m_in : Infinity)));
+    const price = Number.isFinite(cheapest) ? `from $${cheapest}/M in` : '';
+    const keyState = prov.available ? color('green', 'key detected ✓') : `needs ${keyEnvVar(prov) || 'a key'}`;
+    return { label: prov.name, hint: `${price} · ${keyState}`, value: prov.id };
+  });
+  items.push({ label: 'Custom OpenAI-compatible endpoint…', hint: 'ollama, vllm, LM Studio, a proxy', value: '__custom__' });
+
+  const firstWithKey = providers.findIndex((prov) => prov.available);
+  const initialIndex = firstWithKey !== -1 ? firstWithKey : Math.max(0, providers.findIndex((prov) => prov.id === 'deepseek'));
+  const chosen = await select('Provider', items, { initialIndex });
+  if (chosen !== '__custom__') return getProvider(chosen);
+  return customProviderFlow({ p, dryRun, notes });
+}
+
+async function customProviderFlow({ p, dryRun, notes }) {
+  bar(dim('Any endpoint speaking the OpenAI chat-completions API works.'));
+  const name = (await input('Provider name', { placeholder: 'Local Ollama' })) || 'Custom';
+  let endpoint = '';
+  while (true) {
+    endpoint = await input('Base URL', { placeholder: 'http://localhost:11434/v1' });
+    try { new URL(endpoint); break; } catch { bar(`${NO} ${dim('that is not a valid URL')}`); }
+  }
+  const modelId = (await input('Model id', { placeholder: 'as the endpoint expects it' })) || 'default';
+  const pastedKey = await input('API key (enter to skip if the endpoint needs none)', { mask: true });
+
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'custom';
+  const provider = {
+    name, id, type: 'openai-compat',
+    api_key: pastedKey || 'none', // literal; "none" satisfies endpoints that ignore auth
+    api_endpoint: endpoint,
+    default_large_model_id: modelId,
+    default_small_model_id: modelId,
+    models: [{
+      id: modelId, name: modelId,
+      cost_per_1m_in: 0, cost_per_1m_out: 0,
+      context_window: 128_000, default_max_tokens: 8192,
+    }],
+  };
+
+  if (!dryRun) {
+    const existing = readJsonSafe(p.providersJson);
+    const list = Array.isArray(existing.data) ? existing.data : (existing.data && existing.data.id ? [existing.data] : []);
+    const next = list.filter((x) => x?.id !== id).concat([provider]);
+    const bak = backupFile(p.providersJson);
+    if (bak) notes.push(`Backed up ${p.providersJson}`);
+    atomicWrite(p.providersJson, JSON.stringify(next, null, 2) + '\n');
+    loadProviders({ fresh: true });
+  }
+  stepDone('Custom provider', `${name} ${dim('→ ' + p.providersJson)}`);
+  return provider;
+}
+
+async function resolveKey({ provider, interactive, flagKey }) {
+  const envVar = keyEnvVar(provider);
+  if (flagKey) return { value: flagKey, mode: 'literal', envVar };
+  if (resolveApiKey(provider)) {
+    if (interactive) stepDone('API key', `${color('green', envVar ? `${envVar} detected ✓` : 'saved with the provider ✓')}`);
+    return envVar
+      ? { value: `\${${envVar}}`, mode: 'env-ref', envVar }
+      : { value: provider.api_key, mode: 'literal', envVar }; // literal key stored in the provider entry
+  }
+  if (interactive) {
+    bar(dim(`No ${envVar || 'API key'} found in your environment.`));
+    const pasted = await input(`${provider.name} API key (enter to add it later)`, { mask: true });
+    if (pasted) return { value: pasted, mode: 'literal', envVar };
+  }
+  return { value: PLACEHOLDER_KEY, mode: 'placeholder', envVar };
+}
+
+// Live 1-shot ping so a typo'd key fails HERE, with the provider's real error,
+// instead of on the user's first delegation tomorrow.
+async function validateKey({ provider, key, interactive, notes }) {
+  const model = findModel(provider, provider.default_small_model_id) || findModel(provider, provider.default_large_model_id);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const apiKey = key.mode === 'literal' ? key.value : resolveApiKey(provider);
+    const spin = spinner(`checking the key against ${provider.name}`);
+    try {
+      await callModel({ provider, model, prompt: 'Reply with the word: pong', maxTokens: 16, temperature: 0, apiKey, timeoutMs: 20_000 });
+      spin.stop(true, `Key verified — ${provider.name} answered ${dim('(' + model.id + ')')}`);
+      return key;
+    } catch (e) {
+      spin.stop(false, `Key check failed: ${e.message}`);
+      const canRetry = interactive && key.mode === 'literal' && attempt < 3;
+      if (!canRetry) {
+        notes.push(`The API key could not be verified against ${provider.name} — saved anyway. Fix it and re-run \`doctor\`.`);
+        return key;
+      }
+      const pasted = await input(`${provider.name} API key, take ${attempt + 1} (enter to keep it as-is)`, { mask: true });
+      if (!pasted) {
+        notes.push(`The API key could not be verified against ${provider.name} — saved anyway. Fix it and re-run \`doctor\`.`);
+        return key;
+      }
+      key = { ...key, value: pasted };
+    }
+  }
+  return key;
+}
+
+// 'auto' = task routing decides silently; 'ask' = Claude presents the
+// shortlist through AskUserQuestion (Claude Code's native picker) each time.
+async function chooseMode({ interactive, flagMode }) {
+  if (flagMode) {
+    if (flagMode !== 'auto' && flagMode !== 'ask') {
+      stepFail('Model choice', `unknown mode "${flagMode}" — use: auto, ask`);
+      return null;
+    }
+    return flagMode;
+  }
+  if (!interactive) return 'auto';
+  return select('Model choice at delegation time', [
+    { label: 'Route by task (recommended)', hint: 'read/write/reason each get a model — zero friction', value: 'auto' },
+    { label: 'Ask me each time', hint: 'pick from your shortlist in Claude Code\'s own picker', value: 'ask' },
+  ], { initialIndex: 0 });
+}
+
+async function chooseShortlist({ provider, interactive }) {
+  const large = provider.default_large_model_id;
+  const small = provider.default_small_model_id || large;
+  const items = provider.models.map((m) => ({
+    label: m.id,
+    hint: `${((m.context_window ?? 0) / 1024).toFixed(0)}K ctx · ${priceHint(m)}`,
+    value: m.id,
+  }));
+  if (!interactive) return [...new Set([large, small])];
+  bar(dim('These become the options Claude offers when it asks "Delegate to which model?".'));
+  bar(dim('Cross-provider entries ("provider:model") can be added later in delegator.json.'));
+  return multiselect('Shortlist', items, { initialSelected: [...new Set([large, small])] });
+}
+
+async function chooseRouting({ provider, interactive, flagPreset }) {
+  const large = provider.default_large_model_id;
+  const small = provider.default_small_model_id || large;
+  const presets = {
+    balanced: { read: small, write: large, reason: large },
+    cheapest: { read: small, write: small, reason: small },
+    max: { read: large, write: large, reason: large },
+  };
+  if (flagPreset && !presets[flagPreset]) {
+    stepFail('Model routing', `unknown preset "${flagPreset}" — use: balanced, cheapest, max`);
+    return null;
+  }
+  // Non-interactive default is "max" — the exact v2 behavior (one big model
+  // for everything), so `init --yes` upgrades never silently change routing.
+  const preset = flagPreset || (interactive ? await select('Model routing', [
+    { label: 'Balanced (recommended)', hint: `read→${small} · write/reason→${large}`, value: 'balanced' },
+    { label: 'Cheapest', hint: `everything→${small}`, value: 'cheapest' },
+    { label: 'Max quality', hint: `everything→${large}`, value: 'max' },
+    { label: 'Custom…', hint: 'pick a model per task', value: 'custom' },
+  ], { initialIndex: 0 }) : 'max');
+
+  if (preset !== 'custom') return presets[preset];
+
+  const routing = {};
+  const items = provider.models.map((m) => ({
+    label: m.id,
+    hint: `${((m.context_window ?? 0) / 1024).toFixed(0)}K ctx · ${priceHint(m)}`,
+    value: m.id,
+  }));
+  const taskBlurb = { read: 'summarize/analyze large inputs', write: 'generate code and docs', reason: 'math, logic, architecture' };
+  for (const task of TASKS) {
+    routing[task] = await select(`Model for "${task}" — ${taskBlurb[task]}`, items, {
+      initialIndex: Math.max(0, provider.models.findIndex((m) => m.id === (task === 'read' ? small : large))),
+    });
+  }
+  return routing;
+}
+
+async function chooseBaseline({ interactive, flagBaseline }) {
+  const map = { opus: 'opus-4.8', 'opus-4.8': 'opus-4.8', sonnet: 'sonnet-5', 'sonnet-5': 'sonnet-5', none: 'none' };
+  if (flagBaseline) {
+    if (!map[flagBaseline]) {
+      stepFail('Savings baseline', `unknown "${flagBaseline}" — use: opus, sonnet, none`);
+      return null;
+    }
+    return map[flagBaseline];
+  }
+  if (!interactive) return 'opus-4.8';
+  return select('Savings baseline — the "vs Claude" line on cost receipts', [
+    { label: 'Opus 4.8 (recommended)', hint: '$5 in / $25 out per 1M', value: 'opus-4.8' },
+    { label: 'Sonnet 5', hint: '$3 in / $15 out per 1M', value: 'sonnet-5' },
+    { label: "Don't show savings", hint: 'receipts show spend only', value: 'none' },
+  ], { initialIndex: 0 });
+}
+
+// ── main ───────────────────────────────────────────────────────────────────
+
 export async function runInit(argv = []) {
+  try {
+    return await wizard(argv);
+  } catch (e) {
+    if (e instanceof AbortError) {
+      outro(dim('Cancelled. Nothing was changed.'));
+      return 1;
+    }
+    throw e;
+  }
+}
+
+async function wizard(argv) {
   const dryRun = argv.includes('--dry-run');
   const noHooks = argv.includes('--no-hooks');
   const assumeYes = argv.includes('--yes') || argv.includes('-y');
+  const flagProvider = flagValue(argv, '--provider');
+  const flagKey = flagValue(argv, '--key');
+  const flagPreset = flagValue(argv, '--preset');
+  const flagBaseline = flagValue(argv, '--baseline');
+  const flagMode = flagValue(argv, '--mode');
+  const interactive = isInteractive() && !assumeYes;
+
   const p = paths();
   const notes = [];
   const backups = [];
 
   console.log('');
-  console.log(`${color('cyan', '◆')} ${bold('claude-code-deepseek-delegator')} ${dim('· init')}${dryRun ? dim('   (dry run — nothing will be written)') : ''}`);
-  console.log(RULE);
-  console.log('');
+  intro(
+    `${PKG_NAME} ${dim('v' + VERSION)}${dryRun ? color('yellow', '  dry run — nothing will be written') : ''}`,
+    'delegate heavy work from Claude Code to a cheaper model · ~1 minute'
+  );
 
-  // ── Full disclosure: show EXACTLY what will be added, then ask. Nothing is
-  //    written before this point. The user sees every change up front. ──
-  console.log(bold('This makes 3 changes to your Claude Code config:'));
-  console.log('');
-  console.log(`  ${bold('1.')} ${bold('CLAUDE.md')}   ${dim(p.claudeMd)}`);
-  console.log(`     Appends the block below. Your existing file is untouched ${dim('— nothing is overwritten.')}`);
-  console.log('');
-  for (const line of `${BLOCK_BEGIN}\n${MANAGED_RULES}\n${BLOCK_END}`.split('\n')) {
-    console.log(`${dim('     │')} ${line}`);
+  // 1) provider
+  const provider = await chooseProvider({ interactive, flagProvider, p, dryRun, notes });
+  if (!provider) return 1;
+
+  // 2) API key (+ live validation when interactive)
+  let key = await resolveKey({ provider, interactive, flagKey });
+  if (interactive && !dryRun && key.mode !== 'placeholder') {
+    key = await validateKey({ provider, key, interactive, notes });
   }
-  console.log('');
-  console.log(`  ${bold('2.')} ${bold('settings.json')}   ${dim(p.settingsJson)}`);
-  if (noHooks) {
-    console.log(`     ${dim('skipped — you passed --no-hooks')}`);
+
+  // 3) model choice: automatic task routing, or an ask-each-time shortlist
+  const mode = await chooseMode({ interactive, flagMode });
+  if (!mode) return 1;
+  let shortlist = [];
+  let routing;
+  if (mode === 'ask') {
+    shortlist = await chooseShortlist({ provider, interactive });
+    // routing still backs the `task` param when Claude skips the picker
+    const large = provider.default_large_model_id;
+    const small = provider.default_small_model_id || large;
+    routing = { read: small, write: large, reason: large };
   } else {
-    console.log('     Adds two PreToolUse hooks that nudge "Delegate to DeepSeek? (y/n)" before');
-    console.log('     large file reads and skill loads, plus one PostToolUse hook that shows the');
-    console.log(`     cost + savings after every deepseek call. They only ${bold('add context or display info')}`);
-    console.log(`     — they never block, delete, or modify your tool calls. Plain ${dim('node')}, no ${dim('jq')}.`);
+    routing = await chooseRouting({ provider, interactive, flagPreset });
+    if (!routing) return 1;
   }
-  console.log('');
-  console.log(`  ${bold('3.')} ${bold('MCP server')}   registers "deepseek" ${dim('(npx -y claude-code-deepseek-delegator)')}`);
-  console.log('');
-  console.log(dim('  Reversible anytime:  npx claude-code-deepseek-delegator uninstall'));
-  console.log(dim('  A timestamped backup is written before any file changes.'));
-  console.log('');
+  const baseline = await chooseBaseline({ interactive, flagBaseline });
+  if (!baseline) return 1;
+
+  const shortlistDetailed = shortlist.map((spec) => {
+    const m = provider.models.find((x) => x.id === spec);
+    return { spec, hint: m ? priceHint(m) : '' };
+  });
+
+  // ── Full disclosure: show EXACTLY what will change, then ask. Nothing is
+  //    written before this point (except a custom provider definition). ──
+  panel([
+    `${bold('delegator.json')}   provider, routing, baseline`,
+    `${bold('CLAUDE.md')}        delegation rules block ${dim('— your content untouched')}`,
+    noHooks
+      ? `${bold('settings.json')}    ${dim('skipped (--no-hooks)')}`
+      : `${bold('settings.json')}    2 nudge hooks + the cost receipt ${dim('— never blocks')}`,
+    `${bold('MCP server')}       "deepseek" ${dim('(npx -y ' + PKG_NAME + ')')}`,
+  ], { title: bold('4 changes to your Claude Code setup') });
+  bar(dim(`reversible anytime: npx ${PKG_NAME} uninstall · timestamped backups are written first`));
+  bar();
 
   if (!dryRun && !assumeYes) {
-    if (!process.stdin.isTTY) {
-      console.log('Not an interactive terminal. Re-run with --yes to apply, or --dry-run to preview only.\n');
+    if (!isInteractive()) {
+      outro('Not an interactive terminal. Re-run with --yes to apply, or --dry-run to preview only.');
       return 1;
     }
-    const answer = (await ask('Apply these changes? (y/N): ')).toLowerCase();
-    if (answer !== 'y' && answer !== 'yes') {
-      console.log('\nCancelled. Nothing was changed.\n');
+    const go = await select('Apply these changes?', [
+      { label: 'Apply', value: true },
+      { label: 'Cancel', value: false },
+    ]);
+    if (!go) {
+      outro(dim('Cancelled. Nothing was changed.'));
       return 1;
     }
-    console.log('');
   }
 
-  // 1) API key
-  const key = await resolveApiKey({ assumeYes });
-  const entry = mcpEntry(key.value);
+  // delegation config
+  if (!dryRun) {
+    const bak = backupFile(p.delegatorJson);
+    if (bak) backups.push(bak);
+    await saveConfig({ provider: provider.id, mode, shortlist, routing, baseline });
+  }
+  applied(OK, 'config', `${dryRun ? 'would write' : 'wrote'} provider/routing/baseline  ${dim('(' + p.delegatorJson + ')')}`);
 
-  console.log(bold(dryRun ? 'Would apply:' : 'Applying:'));
-
-  // 2) MCP server registration
+  // MCP server registration
+  const entry = mcpEntry(key.value, key.envVar || 'DEEPSEEK_API_KEY');
+  if (!key.envVar && key.mode === 'literal') delete entry.env; // key lives in the provider entry itself
   let mcp;
   if (cliAvailable()) {
     mcp = dryRun
@@ -175,65 +405,80 @@ export async function runInit(argv = []) {
     notes.push('`claude` CLI not found on PATH; used file fallback for MCP config.');
     mcp = wireMcpViaFile(p, entry, dryRun);
   }
-  console.log(row(mcp.ok ? OK : NO, 'MCP server', mcp.detail));
+  applied(mcp.ok ? OK : NO, 'MCP server', mcp.detail);
   if (mcp.backup) backups.push(mcp.backup);
 
-  // 3) CLAUDE.md rules
+  // CLAUDE.md rules
   const curMd = existsSync(p.claudeMd) ? readFileSync(p.claudeMd, 'utf8') : '';
-  const nextMd = upsertBlock(curMd);
+  const nextMd = upsertBlock(curMd, managedRules(provider.name, { shortlist: shortlistDetailed }));
   const mdChanged = nextMd !== curMd;
   if (mdChanged && !dryRun) {
     const bak = backupFile(p.claudeMd);
     if (bak) backups.push(bak);
     atomicWrite(p.claudeMd, nextMd);
   }
-  console.log(row(OK, 'CLAUDE.md', `${dryRun ? 'would install' : mdChanged ? 'installed' : 'already up to date'} the delegation rules  ${dim('(' + p.claudeMd + ')')}`));
+  applied(OK, 'CLAUDE.md', `${dryRun ? 'would install' : mdChanged ? 'installed' : 'already up to date'} the delegation rules  ${dim('(' + p.claudeMd + ')')}`);
 
-  // 4) settings.json hooks
+  // settings.json hooks
   if (noHooks) {
-    console.log(row(SKIP, 'hooks', dim('skipped (--no-hooks)')));
+    applied(dim('•'), 'hooks', dim('skipped (--no-hooks)'));
   } else {
     const res = readJsonSafe(p.settingsJson);
     if (!res.ok) {
-      console.log(row(NO, 'hooks', `${dim(p.settingsJson)} is not valid JSON — left untouched, hooks NOT installed`));
+      applied(NO, 'hooks', `${dim(p.settingsJson)} is not valid JSON — left untouched, hooks NOT installed`);
       notes.push(`Fix ${p.settingsJson} then re-run init to enable hard enforcement.`);
     } else {
-      const next = addHooks(res.data);
+      const next = addHooks(res.data, provider.name);
       const changed = JSON.stringify(next) !== JSON.stringify(res.data);
       if (changed && !dryRun) {
         const bak = backupFile(p.settingsJson);
         if (bak) backups.push(bak);
         atomicWrite(p.settingsJson, JSON.stringify(next, null, 2) + '\n');
       }
-      console.log(row(OK, 'hooks', `${dryRun ? 'would install' : changed ? 'installed' : 'already up to date'} Read + Skill gates + cost display  ${dim('(' + p.settingsJson + ')')}`));
+      applied(OK, 'hooks', `${dryRun ? 'would install' : changed ? 'installed' : 'already up to date'} Read + Skill gates + cost display  ${dim('(' + p.settingsJson + ')')}`);
       if (!has('node')) notes.push('`node` was not found on PATH — the PreToolUse hooks run via node, so make sure node is on PATH.');
     }
   }
 
   // Key guidance
-  if (key.mode === 'env-ref') notes.push('MCP config references ${DEEPSEEK_API_KEY}. Make sure that variable is exported in your shell profile so Claude Code can read it.');
-  if (key.mode === 'literal') notes.push('Your API key was saved into the MCP config. To keep it out of that file (and share it with other tools), export DEEPSEEK_API_KEY in your shell profile and re-run init.');
-  if (key.mode === 'placeholder') notes.push(`No API key set. Replace "${PLACEHOLDER_KEY}" in your MCP config, or set DEEPSEEK_API_KEY and re-run init.`);
+  if (key.mode === 'env-ref') notes.push(`MCP config references \${${key.envVar}}. Make sure that variable is exported in your shell profile so Claude Code can read it.`);
+  if (key.mode === 'literal' && key.envVar) notes.push(`Your API key was saved into the MCP config. To keep it out of that file, export ${key.envVar} in your shell profile and re-run init.`);
+  if (key.mode === 'placeholder') notes.push(`No API key set. Replace "${PLACEHOLDER_KEY}" in your MCP config, or set ${key.envVar || 'the provider key'} and re-run init.`);
 
   // Report
-  console.log('');
-  console.log(RULE);
+  bar();
   if (backups.length) {
-    console.log(dim('  Backups (restore to undo manually):'));
-    for (const b of backups) console.log(dim(`    ${b}`));
-    console.log('');
+    bar(dim('backups (restore to undo manually):'));
+    for (const b of backups) bar(dim(`  ${b}`));
+    bar();
   }
   if (notes.length) {
-    console.log(`  ${color('yellow', 'Notes')}`);
-    for (const n of notes) console.log(`    ${color('yellow', '!')} ${n}`);
-    console.log('');
+    for (const n of notes) bar(`${color('yellow', '!')} ${n}`);
+    bar();
   }
   if (dryRun) {
-    console.log(`  ${bold('Dry run complete.')} Re-run without ${dim('--dry-run')} to apply.`);
-  } else {
-    console.log(`  ${color('green', 'Done.')} Restart Claude Code — heavy tasks will then prompt ${bold('"Delegate to DeepSeek? (y/n)"')}.`);
-    console.log(dim('  Remove everything later:  npx claude-code-deepseek-delegator uninstall'));
+    outro(`${bold('Dry run complete.')} Re-run without ${dim('--dry-run')} to apply.`);
+    return 0;
   }
-  console.log('');
+
+  panel([
+    `${bold('provider')}   ${provider.name} ${dim('(' + provider.id + ')')}`,
+    ...(mode === 'ask'
+      ? [`${bold('picker')}     ask each time ${dim('· ' + shortlist.join(' · '))}`]
+      : [
+          `${bold('read')}    ${dim('→')}  ${routing.read}`,
+          `${bold('write')}   ${dim('→')}  ${routing.write}`,
+          `${bold('reason')}  ${dim('→')}  ${routing.reason}`,
+        ]),
+    `${bold('baseline')}   ${baseline === 'none' ? dim('off') : baseline}`,
+  ], { title: color('green', '✓') + ' ' + bold('delegation is wired') });
+  bar();
+  outro([
+    `${color('green', 'Done.')} Restart Claude Code — heavy tasks will prompt ${bold(`"Delegate to ${provider.name}? (y/n)"`)}`,
+    '',
+    `${dim('try:')}      claude "use delegate to summarize README.md"`,
+    `${dim('verify:')}   npx ${PKG_NAME} doctor`,
+    `${dim('remove:')}   npx ${PKG_NAME} uninstall`,
+  ]);
   return 0;
 }

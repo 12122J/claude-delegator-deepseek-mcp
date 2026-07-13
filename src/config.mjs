@@ -13,6 +13,11 @@ export const TASKS = ['read', 'write', 'reason'];
 
 export const DEFAULT_CONFIG = Object.freeze({
   provider: 'deepseek',
+  // 'auto': task routing picks the model. 'ask': the CLAUDE.md rules have
+  // Claude present `shortlist` through AskUserQuestion (Claude Code's native
+  // picker) at delegation time; the server just honors the chosen `model`.
+  mode: 'auto',
+  shortlist: Object.freeze([]),
   routing: Object.freeze({
     read: 'deepseek-v4-pro',
     write: 'deepseek-v4-pro',
@@ -33,6 +38,8 @@ export function loadConfig() {
   }
   const cfg = structuredClone(DEFAULT_CONFIG);
   if (typeof data.provider === 'string' && data.provider) cfg.provider = data.provider;
+  if (data.mode === 'ask' || data.mode === 'auto') cfg.mode = data.mode;
+  if (Array.isArray(data.shortlist)) cfg.shortlist = data.shortlist.filter((s) => typeof s === 'string' && s);
   if (data.routing && typeof data.routing === 'object') {
     for (const task of TASKS) {
       if (typeof data.routing[task] === 'string' && data.routing[task]) cfg.routing[task] = data.routing[task];

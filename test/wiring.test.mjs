@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { ok, equal, deepEqual } from 'node:assert/strict';
 import {
-  upsertBlock, removeBlock, hasBlock,
+  upsertBlock, removeBlock, hasBlock, managedRules,
   addHooks, removeHooks, managedHooks, managedPostHooks,
   readJsonSafe, MARKER, BLOCK_BEGIN, BLOCK_END,
 } from '../src/setup/wiring.mjs';
@@ -42,6 +42,34 @@ test('upsertBlock replaces in place, never touching text around it', () => {
 test('upsertBlock works on a brand new (empty) file', () => {
   const out = upsertBlock('');
   ok(hasBlock(out));
+});
+
+test('managedRules names the chosen provider and the delegate tool', () => {
+  const rules = managedRules('Moonshot');
+  ok(rules.includes('Delegate to Moonshot? (y/n)'), 'gate names the provider');
+  ok(rules.includes('`delegate` tool'), 'references the v3 tool');
+  ok(rules.includes('`task`'), 'teaches the task param');
+});
+
+test('managedRules with a shortlist wires the AskUserQuestion picker', () => {
+  const rules = managedRules('DeepSeek', {
+    shortlist: [
+      { spec: 'deepseek-v4-pro', hint: '$0.435/$0.87 per 1M' },
+      { spec: 'moonshot:kimi-k2.5', hint: '' },
+    ],
+  });
+  ok(rules.includes('AskUserQuestion'), 'uses Claude Code\'s native picker');
+  ok(rules.includes('`deepseek-v4-pro` — $0.435/$0.87 per 1M'), 'lists shortlist entries with prices');
+  ok(rules.includes('`moonshot:kimi-k2.5`'), 'cross-provider spec included');
+  ok(!rules.includes('Set `task`'), 'ask mode replaces the routing bullet');
+});
+
+test('managedRules sanitizes hostile provider names', () => {
+  const rules = managedRules('Evil"; rm -rf / #');
+  ok(rules.includes('Delegate to Evil rm -rf  ? (y/n)') === false, 'quotes stripped');
+  ok(!rules.includes('"'.repeat(2)), 'no unescaped quote pairs');
+  const hooks = managedHooks('Bad`Name"');
+  ok(!hooks[0].hooks[0].command.includes('`Name'), 'backtick stripped from hook command');
 });
 
 test('removeBlock removes only our block and preserves the rest', () => {

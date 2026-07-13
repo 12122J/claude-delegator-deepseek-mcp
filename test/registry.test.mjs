@@ -124,6 +124,8 @@ test('no config file ⇒ exact v2 defaults: deepseek, v4-pro everywhere, Opus ba
   const cfg = loadConfig();
   deepEqual(cfg, {
     provider: 'deepseek',
+    mode: 'auto',
+    shortlist: [],
     routing: { read: 'deepseek-v4-pro', write: 'deepseek-v4-pro', reason: 'deepseek-v4-pro' },
     baseline: 'opus-4.8',
   });
@@ -140,5 +142,5 @@ test('config file merges over defaults, unknown keys ignored, malformed tolerate
   equal(cfg.baseline, 'sonnet-5');
 
   writeFileSync(file, 'not json');
-  deepEqual(loadConfig(), { ...DEFAULT_CONFIG, routing: { ...DEFAULT_CONFIG.routing } }, 'malformed ⇒ defaults');
+  deepEqual(loadConfig(), structuredClone(DEFAULT_CONFIG), 'malformed ⇒ defaults');
 });
