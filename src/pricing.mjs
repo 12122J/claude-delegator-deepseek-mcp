@@ -48,7 +48,8 @@ export function buildFooter(result, { provider, model, baseline = 'opus-4.8' }) 
   const cost = modelCost(usage, model);
   const base = BASELINES[baseline];
   const claudeCost = base ? calculateCost(usage.promptTokens ?? 0, usage.completionTokens ?? 0, base) : 0;
-  const { saved, pct } = formatSavings(cost, claudeCost);
+  // No baseline ⇒ no savings claim at all (not a negative "saving").
+  const { saved, pct } = base ? formatSavings(cost, claudeCost) : { saved: 0, pct: 0 };
 
   const costStr = formatCost(cost);
   const totalStr = (usage.totalTokens ?? 0).toLocaleString();
