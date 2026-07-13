@@ -38,6 +38,25 @@ const out = (s) => process.stdout.write(s);
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const visibleWidth = (s) => s.replace(ANSI_RE, '').length;
 
+// Clamp a line to the terminal width. Redrawn widgets move the cursor up by
+// their line count; a line that soft-wraps occupies TWO physical rows and
+// breaks that math, leaving a stale ghost line behind on every repaint. Every
+// line a widget repaints must pass through here. ANSI sequences are copied
+// for free; a truncation ends with "…" + reset so styles never leak.
+function fitWidth(s) {
+  const cols = (process.stdout.columns || 80) - 1;
+  if (visibleWidth(s) <= cols) return s;
+  let visible = 0;
+  let res = '';
+  for (let i = 0; i < s.length;) {
+    const m = /^\x1b\[[0-9;]*m/.exec(s.slice(i));
+    if (m) { res += m[0]; i += m[0].length; continue; }
+    if (visible >= cols - 1) break;
+    res += s[i]; visible++; i++;
+  }
+  return res + `…${CSI}0m`;
+}
+
 // Rail glyphs
 const BAR = dim('│');
 const S_ACTIVE = color('cyan', '◆');
@@ -154,7 +173,7 @@ export function select(title, items, { initialIndex = 0 } = {}) {
         `${S_ACTIVE}  ${bold(title)}  ${dim('↑↓ · enter')}`,
         ...items.map((it, i) => line(it, i === index)),
       ];
-      out(lines.map((l) => `\r${CSI}2K${l}`).join('\n') + '\n');
+      out(lines.map((l) => `\r${CSI}2K${fitWidth(l)}`).join('\n') + '\n');
       rendered = lines.length;
     };
 
@@ -208,7 +227,7 @@ export function multiselect(title, items, { initialSelected = [] } = {}) {
         `${S_ACTIVE}  ${bold(title)}  ${dim('space toggle · enter confirm')}${warn ? '  ' + color('yellow', warn) : ''}`,
         ...items.map((it, i) => line(it, i === index)),
       ];
-      out(lines.map((l) => `\r${CSI}2K${l}`).join('\n') + '\n');
+      out(lines.map((l) => `\r${CSI}2K${fitWidth(l)}`).join('\n') + '\n');
       rendered = lines.length;
     };
 
@@ -259,7 +278,7 @@ export function input(title, { mask = false, placeholder = '', fallback = '' } =
       const shown = value
         ? (mask ? '•'.repeat(Math.min(value.length, 40)) : value)
         : dim(placeholder);
-      out(`${CSI}1A\r${CSI}2K${S_ACTIVE}  ${bold(title)}\n\r${CSI}2K${BAR}  ${shown}${color('cyan', '▌')}`);
+      out(`${CSI}1A\r${CSI}2K${fitWidth(`${S_ACTIVE}  ${bold(title)}`)}\n\r${CSI}2K${fitWidth(`${BAR}  ${shown}${color('cyan', '▌')}`)}`);
     };
 
     const finish = (ok) => {
@@ -301,7 +320,7 @@ export function spinner(text) {
   let i = 0;
   hideCursor();
   const timer = setInterval(() => {
-    out(`\r${CSI}2K${color('cyan', frames[i++ % frames.length])}  ${text}`);
+    out(fitWidth(`\r${CSI}2K${color('cyan', frames[i++ % frames.length])}  ${text}`));
   }, 90);
   timer.unref?.();
   return {
