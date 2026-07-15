@@ -19,10 +19,6 @@ Claude orchestrates; the delegate does the grunt work (big file audits, long gen
 
 > ⭐ **If this saves you money, please [star the repo](https://github.com/12122J/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
 
-<a href="https://github.com/12122J/mcpvet"><img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/mcpvet-badge.svg" alt="Vetted A / CLEARED by mcpvet" width="440"></a>
-
-> 🛡️ Vetted by **[mcpvet](https://github.com/12122J/mcpvet)** — a security scanner for MCP servers, and one of my projects. Adding an MCP server runs its code on your machine; **visit to learn more and audit the safe ones before you install.**
-
 <img src="https://raw.githubusercontent.com/12122J/claude-delegator-deepseek-mcp/main/assets/hero.svg" alt="A Claude Code session in a light macOS terminal: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, files are handed off via files[], a receipt line shows saved $0.194 (94% vs Opus) · spent $0.012, and Claude synthesizes the three findings" width="860">
 
 Every call ends with a receipt — shown to you automatically, straight from the API's own token counts. You always know what you spent and what you saved.
