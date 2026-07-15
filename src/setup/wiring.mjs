@@ -21,8 +21,8 @@ export const MARKER = 'claude-code-deepseek-delegator';
 // v2 key, still recognized everywhere so untouched installs keep working.
 // Order matters: first is what we write, the rest are legacy reads.
 export const MCP_KEYS = ['delegate', 'deepseek'];
-export const REPO_URL = 'https://github.com/12122J/claude-delegator-deepseek-mcp';
-export const AUTHOR = 'Javi (@12122J)';
+export const REPO_URL = 'https://github.com/fjgbue/claude-delegator-deepseek-mcp';
+export const AUTHOR = 'Javi (@fjgbue)';
 
 // Sentinels that fence our managed block inside CLAUDE.md. We only ever touch
 // text between these two lines.

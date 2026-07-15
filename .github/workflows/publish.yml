@@ -13,7 +13,7 @@ name: Publish to npm
 # is a no-op. No tags to remember, nothing can drift.
 #
 # One-time npmjs setup (Trusted Publisher):
-#   org/user: 12122J · repo: claude-delegator-deepseek-mcp · workflow: publish.yml
+#   org/user: fjgbue · repo: claude-delegator-deepseek-mcp · workflow: publish.yml
 
 on:
   push:

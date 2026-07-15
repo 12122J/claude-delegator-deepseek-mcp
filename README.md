@@ -17,11 +17,7 @@ Claude orchestrates; the delegate does the grunt work (big file audits, long gen
   <img alt="license" src="https://img.shields.io/npm/l/claude-code-deepseek-delegator?color=blue">
 </p>
 
-> ⭐ **If this saves you money, please [star the repo](https://github.com/12122J/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
-
-<a href="https://github.com/12122J/mcpvet"><img src="assets/mcpvet-badge.svg" alt="Vetted A / CLEARED by mcpvet" width="440"></a>
-
-> 🛡️ Vetted by **[mcpvet](https://github.com/12122J/mcpvet)** — a security scanner for MCP servers, and one of my projects. Adding an MCP server runs its code on your machine; **visit to learn more and audit the safe ones before you install.**
+> ⭐ **If this saves you money, please [star the repo](https://github.com/fjgbue/claude-delegator-deepseek-mcp).** It's the single biggest thing that helps other Claude Code users find it.
 
 <img src="assets/hero.svg" alt="A Claude Code session in a light macOS terminal: the gate asks 'Delegate to DeepSeek? (y/n)', the user answers y, files are handed off via files[], a receipt line shows saved $0.194 (94% vs Opus) · spent $0.012, and Claude synthesizes the three findings" width="860">
 
@@ -280,4 +276,4 @@ npx claude-code-deepseek-delegator <command>
 
 MIT. Provider registry data vendored from [charmbracelet/catwalk](https://github.com/charmbracelet/catwalk) (MIT).
 
-Built by [Javi](https://github.com/12122J). If this saves you money, [a star](https://github.com/12122J/claude-delegator-deepseek-mcp) is the nicest way to say thanks — it's how other Claude Code users find it.
+Built by [Javi](https://github.com/fjgbue). If this saves you money, [a star](https://github.com/fjgbue/claude-delegator-deepseek-mcp) is the nicest way to say thanks — it's how other Claude Code users find it.
