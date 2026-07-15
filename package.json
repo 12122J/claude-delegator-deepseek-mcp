@@ -51,15 +51,15 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/12122J/claude-delegator-deepseek-mcp.git"
+    "url": "git+https://github.com/fjgbue/claude-delegator-deepseek-mcp.git"
   },
   "license": "MIT",
   "engines": {
     "node": ">=20"
   },
-  "author": "Javi (https://github.com/12122J)",
-  "homepage": "https://github.com/12122J/claude-delegator-deepseek-mcp#readme",
+  "author": "Javi (https://github.com/fjgbue)",
+  "homepage": "https://github.com/fjgbue/claude-delegator-deepseek-mcp#readme",
   "bugs": {
-    "url": "https://github.com/12122J/claude-delegator-deepseek-mcp/issues"
+    "url": "https://github.com/fjgbue/claude-delegator-deepseek-mcp/issues"
   }
 }

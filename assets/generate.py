@@ -127,7 +127,7 @@ init.append([seg(D, '└  '), seg(G, 'Done.'), seg(P, ' Restart Claude Code — 
 init.append([seg(D, '   try:      claude "use delegate to summarize README.md"')])
 init.append([seg(D, '   verify:   npx claude-code-deepseek-delegator doctor')])
 init.append([])
-init.append([seg(YW, '   ★ '), seg(D, 'enjoying it? a star helps others find it → github.com/12122J/claude-delegator-deepseek-mcp')])
+init.append([seg(YW, '   ★ '), seg(D, 'enjoying it? a star helps others find it → github.com/fjgbue/claude-delegator-deepseek-mcp')])
 
 render(init, 'javi — deepseek-delegator init — 96×44', 'assets/init.svg')
 

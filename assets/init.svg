@@ -60,5 +60,5 @@
   <text x="26" y="949" xml:space="preserve"><tspan fill="#9a9a9a">└  </tspan><tspan fill="#188038">Done.</tspan><tspan fill="#2d2d2d"> Restart Claude Code — heavy tasks will prompt </tspan><tspan fill="#2d2d2d" font-weight="600">&quot;Delegate to DeepSeek? (y/n)&quot;</tspan></text>
   <text x="26" y="968" xml:space="preserve"><tspan fill="#9a9a9a">   try:      claude &quot;use delegate to summarize README.md&quot;</tspan></text>
   <text x="26" y="987" xml:space="preserve"><tspan fill="#9a9a9a">   verify:   npx claude-code-deepseek-delegator doctor</tspan></text>
-  <text x="26" y="1025" xml:space="preserve"><tspan fill="#b26a00">   ★ </tspan><tspan fill="#9a9a9a">enjoying it? a star helps others find it → github.com/12122J/claude-delegator-deepseek-mcp</tspan></text>
+  <text x="26" y="1025" xml:space="preserve"><tspan fill="#b26a00">   ★ </tspan><tspan fill="#9a9a9a">enjoying it? a star helps others find it → github.com/fjgbue/claude-delegator-deepseek-mcp</tspan></text>
 </svg>
